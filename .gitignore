@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Uploads directory
+uploads/
+
+# Data file
+data.json
+
+# Logs
+*.log
+
+# Environment variables
+.env
+
+# IDE files
+.vscode/
