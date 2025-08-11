@@ -95,7 +95,7 @@ app.post('/api/upload', upload.single('image'), (req, res) => {
     const text = req.body.text || '';
 
     // 读取现有数据
-    const data = JSON.parse(fs.readFileSync(dataFile));
+    const data = readDataFile();
 
     // 创建新记录
     const record = {
