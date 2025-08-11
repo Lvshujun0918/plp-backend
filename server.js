@@ -22,9 +22,9 @@ const storage = multer.diskStorage({
                   (req.connection.socket ? req.connection.socket.remoteAddress : null) ||
                   (req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown');
     
-    // 获取文件大小
-    const fileSize = req.headers['content-length'] || 0;
-    
+    // 将 clientIP 存储在 req 对象中以便后续使用
+    req.clientIP = clientIP;
+
     // 基于IP生成hash
     const ipHash = crypto.createHash('md5').update(clientIP).digest('hex');
     
@@ -77,8 +77,8 @@ app.post('/api/upload', upload.single('image'), (req, res) => {
       originalname: req.file.originalname,
       text: text,
       uploadTime: new Date().toISOString(),
-      fileSize: fileSize,
-      uploaderIP: clientIP
+      fileSize: req.file.size,
+      uploaderIP: req.clientIP
     };
 
     // 保存记录
@@ -105,6 +105,28 @@ app.get('/api/records', (req, res) => {
     res.status(200).json(data);
   } catch (error) {
     console.error('获取记录错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 随机获取一个图片和文字的接口
+app.get('/api/random', (req, res) => {
+  try {
+    const data = JSON.parse(fs.readFileSync(dataFile));
+    
+    // 检查是否有记录
+    if (data.length === 0) {
+      return res.status(404).json({ error: '没有可用的记录' });
+    }
+    
+    // 随机选择一个记录
+    const randomIndex = Math.floor(Math.random() * data.length);
+    const randomRecord = data[randomIndex];
+    
+    // 返回随机记录
+    res.status(200).json(randomRecord);
+  } catch (error) {
+    console.error('获取随机记录错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
