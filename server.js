@@ -3,6 +3,7 @@ const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto'); // 引入crypto模块用于生成hash
 
 // 创建上传目录
 const uploadDir = 'uploads';
@@ -16,8 +17,24 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    // 获取客户端IP地址
+    const clientIP = req.connection.remoteAddress || req.socket.remoteAddress || 
+                  (req.connection.socket ? req.connection.socket.remoteAddress : null) ||
+                  (req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown');
+    
+    // 获取文件大小
+    const fileSize = req.headers['content-length'] || 0;
+    
+    // 基于IP生成hash
+    const ipHash = crypto.createHash('md5').update(clientIP).digest('hex');
+    
+    // 生成新的文件名
+    const timestamp = Date.now();
+    const randomSuffix = Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    const newFilename = ipHash + '-' + timestamp + '-' + randomSuffix + ext;
+    
+    cb(null, newFilename);
   }
 });
 
@@ -37,6 +54,8 @@ if (!fs.existsSync(dataFile)) {
   fs.writeFileSync(dataFile, JSON.stringify([]));
 }
 
+// 上传接口配置
+// 测试方法：curl -X POST -F "image=@D:/Pic/_LIM3896-编辑.jpg" -F "text=这是一张美丽的风景图片" http://localhost:3000/api/upload
 // 上传图片并记录文字的接口
 app.post('/api/upload', upload.single('image'), (req, res) => {
   try {
@@ -57,7 +76,9 @@ app.post('/api/upload', upload.single('image'), (req, res) => {
       filename: req.file.filename,
       originalname: req.file.originalname,
       text: text,
-      uploadTime: new Date().toISOString()
+      uploadTime: new Date().toISOString(),
+      fileSize: fileSize,
+      uploaderIP: clientIP
     };
 
     // 保存记录
@@ -75,6 +96,8 @@ app.post('/api/upload', upload.single('image'), (req, res) => {
   }
 });
 
+// 获取记录接口配置
+// 测试：curl http://localhost:3000/api/records
 // 获取所有记录的接口
 app.get('/api/records', (req, res) => {
   try {
