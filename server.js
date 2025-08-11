@@ -136,6 +136,8 @@ app.get('/api/records', (req, res) => {
   }
 });
 
+// 随机获取记录接口配置
+// 测试：curl http://localhost:3000/api/random
 // 随机获取一个图片和文字的接口
 app.get('/api/random', (req, res) => {
   try {
