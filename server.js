@@ -50,8 +50,35 @@ app.use('/uploads', express.static('uploads'));
 
 // 数据存储（在实际应用中应使用数据库）
 const dataFile = 'data.json';
-if (!fs.existsSync(dataFile)) {
-  fs.writeFileSync(dataFile, JSON.stringify([]));
+
+// 读取数据文件的辅助函数
+function readDataFile() {
+  // 如果文件不存在，创建一个空数组
+  if (!fs.existsSync(dataFile)) {
+    fs.writeFileSync(dataFile, JSON.stringify([]));
+    return [];
+  }
+  
+  // 读取文件内容
+  const data = fs.readFileSync(dataFile, 'utf8');
+  
+  // 如果文件为空，返回空数组
+  if (!data || data.trim() === '') {
+    return [];
+  }
+  
+  // 解析并返回数据
+  try {
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('JSON解析错误:', error);
+    return [];
+  }
+}
+
+// 写入数据文件的辅助函数
+function writeDataFile(data) {
+  fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
 }
 
 // 上传接口配置
@@ -83,7 +110,7 @@ app.post('/api/upload', upload.single('image'), (req, res) => {
 
     // 保存记录
     data.push(record);
-    fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
+    writeDataFile(data);
 
     // 返回成功响应
     res.status(200).json({
