@@ -83,6 +83,7 @@ function writeDataFile(data) {
 
 // 上传接口配置
 // 测试方法：curl -X POST -F "image=@D:/Pic/_LIM3896-编辑.jpg" -F "text=这是一张美丽的风景图片" http://localhost:3000/api/upload
+// curl -X POST -F "image=@Z:/图像导出/_LIM4385-2.jpg" -F "text=书法" http://localhost:3000/api/upload
 // 上传图片并记录文字的接口
 app.post('/api/upload', upload.single('image'), (req, res) => {
   try {
@@ -101,7 +102,6 @@ app.post('/api/upload', upload.single('image'), (req, res) => {
     const record = {
       id: Date.now(),
       filename: req.file.filename,
-      originalname: req.file.originalname,
       text: text,
       uploadTime: new Date().toISOString(),
       fileSize: req.file.size,
