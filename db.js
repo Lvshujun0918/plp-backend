@@ -1,5 +1,6 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const crypto = require('crypto');
 
 // 数据库文件路径
 const dbPath = path.join(__dirname, 'database.sqlite');
@@ -21,7 +22,7 @@ function initializeDatabase() {
   // 创建表
   db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS records (
-      id INTEGER PRIMARY KEY,
+      id TEXT PRIMARY KEY,
       filename TEXT NOT NULL,
       text TEXT,
       uploadTime TEXT NOT NULL,
@@ -37,13 +38,25 @@ function initializeDatabase() {
   });
 }
 
+// 生成唯一ID
+function generateUniqueId() {
+  // 使用crypto.randomBytes生成更可靠的唯一ID
+  const timestamp = Date.now().toString(36);
+  const randomPart = crypto.randomBytes(8).toString('hex');
+  const uniqueId = `${timestamp}-${randomPart}`;
+  return uniqueId;
+}
+
 // 保存记录
 function saveRecord(record) {
   return new Promise((resolve, reject) => {
+    // 为记录生成唯一ID
+    const uniqueId = generateUniqueId();
+    
     const sql = `INSERT INTO records(id, filename, text, uploadTime, fileSize, uploaderIP)
                  VALUES(?, ?, ?, ?, ?, ?)`;
     const params = [
-      record.id,
+      uniqueId,
       record.filename,
       record.text,
       record.uploadTime,
@@ -56,7 +69,7 @@ function saveRecord(record) {
         reject(err);
       } else {
         resolve({
-          id: record.id,
+          id: uniqueId,
           filename: record.filename,
           text: record.text,
           uploadTime: record.uploadTime,

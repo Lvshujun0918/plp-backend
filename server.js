@@ -60,9 +60,8 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
     // 获取文字信息
     const text = req.body.text || '';
 
-    // 创建新记录（已去除originalname字段）
+    // 创建新记录（已去除originalname字段，ID由数据库模块生成）
     const record = {
-      id: Date.now(),
       filename: req.file.filename,
       text: text,
       uploadTime: new Date().toISOString(),
