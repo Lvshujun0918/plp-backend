@@ -1,8 +1,8 @@
-const fs = require('fs');
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 const db = require('./db');
 
@@ -110,6 +110,60 @@ app.get('/api/random', async (req, res) => {
     res.status(200).json(randomRecord);
   } catch (error) {
     console.error('获取随机记录错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 为指定ID的记录添加评论
+app.post('/api/records/:id/comments', async (req, res) => {
+  try {
+    const recordId = req.params.id;
+    const { content } = req.body;
+
+    // 检查评论内容
+    if (!content || content.trim() === '') {
+      return res.status(400).json({ error: '评论内容不能为空' });
+    }
+
+    // 创建评论对象
+    const comment = {
+      content: content.trim(),
+      commenterIP: req.connection.remoteAddress || req.socket.remoteAddress || 
+                  (req.connection.socket ? req.connection.socket.remoteAddress : null) ||
+                  (req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown'),
+      commentTime: new Date().toISOString()
+    };
+
+    // 添加评论到数据库
+    const savedComment = await db.addComment(recordId, comment);
+
+    // 返回成功响应
+    res.status(200).json({
+      message: '评论添加成功',
+      data: savedComment
+    });
+  } catch (error) {
+    console.error('添加评论错误:', error);
+    
+    if (error.message === '指定的记录不存在') {
+      return res.status(404).json({ error: '指定的记录不存在' });
+    }
+    
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 获取指定ID记录的所有评论
+app.get('/api/records/:id/comments', async (req, res) => {
+  try {
+    const recordId = req.params.id;
+    
+    // 获取评论
+    const comments = await db.getCommentsByRecordId(recordId);
+    
+    res.status(200).json(comments);
+  } catch (error) {
+    console.error('获取评论错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
