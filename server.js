@@ -3,80 +3,10 @@ const path = require('path');
 
 const DB_FILE = 'database.json';
 
-// 初始化数据库文件
-function initializeDatabase() {
-  if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify([]));
-  }
-}
-
-// 读取数据库
-function readDatabase() {
-  try {
-    const data = fs.readFileSync(DB_FILE, 'utf8');
-    return data ? JSON.parse(data) : [];
-  } catch (error) {
-    console.error('读取数据库错误:', error);
-    return [];
-  }
-}
-
-// 写入数据库
-function writeDatabase(data) {
-  try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-    return true;
-  } catch (error) {
-    console.error('写入数据库错误:', error);
-    return false;
-  }
-}
-
-// 保存记录到数据库
-function saveRecord(record) {
-  try {
-    const db = readDatabase();
-    
-    // 添加新记录
-    db.push(record);
-    
-    // 写回数据库文件
-    writeDatabase(db);
-    
-    return record;
-  } catch (error) {
-    console.error('保存记录错误:', error);
-    return null;
-  }
-}
-
-// 获取所有记录
-function getAllRecords() {
-  return readDatabase();
-}
-
-// 随机获取一个记录
-function getRandomRecord() {
-  const db = readDatabase();
-  if (db.length === 0) {
-    return null;
-  }
-  const randomIndex = Math.floor(Math.random() * db.length);
-  return db[randomIndex];
-}
-
-// 导出所有函数
-module.exports = {
-  initializeDatabase,
-  saveRecord,
-  getAllRecords,
-  getRandomRecord
-};
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
 const crypto = require('crypto');
 const db = require('./db');
 
