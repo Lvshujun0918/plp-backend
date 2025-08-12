@@ -21,7 +21,6 @@ function initializeDatabase() {
 
   // 创建表
   db.serialize(() => {
-    // 创建记录表
     db.run(`CREATE TABLE IF NOT EXISTS records (
       id TEXT PRIMARY KEY,
       filename TEXT NOT NULL,
@@ -31,25 +30,9 @@ function initializeDatabase() {
       uploaderIP TEXT
     )`, (err) => {
       if (err) {
-        console.error('创建记录表失败:', err.message);
+        console.error('创建表失败:', err.message);
       } else {
-        console.log('记录表已准备就绪');
-      }
-    });
-
-    // 创建评论表
-    db.run(`CREATE TABLE IF NOT EXISTS comments (
-      id TEXT PRIMARY KEY,
-      recordId TEXT NOT NULL,
-      content TEXT NOT NULL,
-      commenterIP TEXT,
-      commentTime TEXT NOT NULL,
-      FOREIGN KEY (recordId) REFERENCES records (id)
-    )`, (err) => {
-      if (err) {
-        console.error('创建评论表失败:', err.message);
-      } else {
-        console.log('评论表已准备就绪');
+        console.log('数据库表已准备就绪');
       }
     });
   });
@@ -147,70 +130,6 @@ function getRandomRecord() {
   });
 }
 
-// 添加评论
-function addComment(recordId, comment) {
-  return new Promise((resolve, reject) => {
-    // 检查记录是否存在
-    const checkSql = `SELECT id FROM records WHERE id = ?`;
-    db.get(checkSql, [recordId], (err, row) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      
-      if (!row) {
-        reject(new Error('指定的记录不存在'));
-        return;
-      }
-
-      // 为评论生成唯一ID
-      const commentId = generateUniqueId();
-      
-      const sql = `INSERT INTO comments(id, recordId, content, commenterIP, commentTime)
-                   VALUES(?, ?, ?, ?, ?)`;
-      const params = [
-        commentId,
-        recordId,
-        comment.content,
-        comment.commenterIP,
-        comment.commentTime
-      ];
-
-      db.run(sql, params, function(err) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({
-            id: commentId,
-            recordId: recordId,
-            content: comment.content,
-            commenterIP: comment.commenterIP,
-            commentTime: comment.commentTime
-          });
-        }
-      });
-    });
-  });
-}
-
-// 获取指定记录的所有评论
-function getCommentsByRecordId(recordId) {
-  return new Promise((resolve, reject) => {
-    const sql = `SELECT id, recordId, content, commenterIP, commentTime 
-                 FROM comments 
-                 WHERE recordId = ? 
-                 ORDER BY commentTime ASC`;
-
-    db.all(sql, [recordId], (err, rows) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(rows);
-      }
-    });
-  });
-}
-
 // 关闭数据库连接
 function closeDatabase() {
   if (db) {
@@ -229,7 +148,5 @@ module.exports = {
   saveRecord,
   getAllRecords,
   getRandomRecord,
-  addComment,
-  getCommentsByRecordId,
   closeDatabase
 };
