@@ -1,79 +1,139 @@
-const fs = require('fs');
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 // 数据库文件路径
 const dbPath = path.join(__dirname, 'database.sqlite');
 
-// 检查数据库文件是否存在
-function databaseExists() {
-  return fs.existsSync(dbPath);
-}
+// 创建数据库连接
+let db;
 
 // 初始化数据库
 function initializeDatabase() {
-  // 在这个简化版本中，我们继续使用JSON文件作为存储
-  // 在实际项目中，这里会初始化SQLite数据库
-  console.log('Database module loaded (using JSON file as storage for now)');
+  // 创建数据库连接
+  db = new sqlite3.Database(dbPath, (err) => {
+    if (err) {
+      console.error('数据库连接失败:', err.message);
+    } else {
+      console.log('已连接到SQLite数据库');
+    }
+  });
+
+  // 创建表
+  db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS records (
+      id INTEGER PRIMARY KEY,
+      filename TEXT NOT NULL,
+      text TEXT,
+      uploadTime TEXT NOT NULL,
+      fileSize INTEGER,
+      uploaderIP TEXT
+    )`, (err) => {
+      if (err) {
+        console.error('创建表失败:', err.message);
+      } else {
+        console.log('数据库表已准备就绪');
+      }
+    });
+  });
 }
 
 // 保存记录
 function saveRecord(record) {
-  const data = readDataFile();
-  data.push(record);
-  writeDataFile(data);
-  return record;
+  return new Promise((resolve, reject) => {
+    const sql = `INSERT INTO records(id, filename, text, uploadTime, fileSize, uploaderIP)
+                 VALUES(?, ?, ?, ?, ?, ?)`;
+    const params = [
+      record.id,
+      record.filename,
+      record.text,
+      record.uploadTime,
+      record.fileSize,
+      record.uploaderIP
+    ];
+
+    db.run(sql, params, function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve({
+          id: record.id,
+          filename: record.filename,
+          text: record.text,
+          uploadTime: record.uploadTime,
+          fileSize: record.fileSize,
+          uploaderIP: record.uploaderIP
+        });
+      }
+    });
+  });
 }
 
 // 获取所有记录
 function getAllRecords() {
-  return readDataFile();
+  return new Promise((resolve, reject) => {
+    const sql = `SELECT id, filename, text, uploadTime, fileSize, uploaderIP FROM records`;
+
+    db.all(sql, [], (err, rows) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(rows);
+      }
+    });
+  });
 }
 
 // 获取随机记录
 function getRandomRecord() {
-  const data = readDataFile();
-  if (data.length === 0) {
-    return null;
-  }
-  const randomIndex = Math.floor(Math.random() * data.length);
-  return data[randomIndex];
+  return new Promise((resolve, reject) => {
+    // 先获取记录总数
+    db.get(`SELECT COUNT(*) as count FROM records`, [], (err, row) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      const count = row.count;
+      if (count === 0) {
+        resolve(null);
+        return;
+      }
+
+      // 生成随机偏移量
+      const randomOffset = Math.floor(Math.random() * count);
+
+      // 获取随机记录
+      const sql = `SELECT id, filename, text, uploadTime, fileSize, uploaderIP 
+                   FROM records LIMIT 1 OFFSET ?`;
+      
+      db.get(sql, [randomOffset], (err, row) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(row);
+        }
+      });
+    });
+  });
 }
 
-// 读取数据文件的辅助函数
-function readDataFile() {
-  const dataFile = path.join(__dirname, 'data.json');
-  // 如果文件不存在，创建一个空数组
-  if (!fs.existsSync(dataFile)) {
-    fs.writeFileSync(dataFile, JSON.stringify([]));
-    return [];
+// 关闭数据库连接
+function closeDatabase() {
+  if (db) {
+    db.close((err) => {
+      if (err) {
+        console.error('关闭数据库连接时出错:', err.message);
+      } else {
+        console.log('数据库连接已关闭');
+      }
+    });
   }
-  
-  // 读取文件内容
-  const data = fs.readFileSync(dataFile, 'utf8');
-  
-  // 如果文件为空，返回空数组
-  if (!data || data.trim() === '') {
-    return [];
-  }
-  
-  // 解析并返回数据
-  try {
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('JSON解析错误:', error);
-    return [];
-  }
-}
-
-// 写入数据文件的辅助函数
-function writeDataFile(data) {
-  const dataFile = path.join(__dirname, 'data.json');
-  fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
 }
 
 module.exports = {
   initializeDatabase,
   saveRecord,
   getAllRecords,
-  getRandomRecord
+  getRandomRecord,
+  closeDatabase
 };
