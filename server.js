@@ -188,6 +188,9 @@ app.get('/api/key', async (req, res) => {
  *                     uploaderIP:
  *                       type: string
  *                       example: ::1
+ *                     status:
+ *                       type: string
+ *                       example: pending
  *       400:
  *         description: 秘钥无效或今日已上传过
  *         content:
@@ -254,7 +257,7 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
 
     // 返回成功响应
     res.status(200).json({
-      message: '上传成功',
+      message: '上传成功，等待审核',
       data: savedRecord
     });
   } catch (error) {
@@ -267,11 +270,11 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
  * @swagger
  * /records:
  *   get:
- *     summary: 获取所有记录
- *     description: 获取所有上传的图片记录
+ *     summary: 获取所有已审核通过的记录
+ *     description: 获取所有已审核通过的图片记录
  *     responses:
  *       200:
- *         description: 成功获取所有记录
+ *         description: 成功获取所有已审核记录
  *         content:
  *           application/json:
  *             schema:
@@ -298,6 +301,9 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
  *                   uploaderIP:
  *                     type: string
  *                     example: ::1
+ *                   status:
+ *                     type: string
+ *                     example: approved
  *       500:
  *         description: 服务器内部错误
  *         content:
@@ -309,10 +315,10 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
  *                   type: string
  *                   example: 服务器内部错误
  */
-// 获取所有记录的接口
+// 获取所有已审核通过的记录接口
 app.get('/api/records', async (req, res) => {
   try {
-    const data = await db.getAllRecords();
+    const data = await db.getApprovedRecords();
     res.status(200).json(data);
   } catch (error) {
     console.error('获取记录错误:', error);
@@ -322,10 +328,167 @@ app.get('/api/records', async (req, res) => {
 
 /**
  * @swagger
+ * /records/pending:
+ *   get:
+ *     summary: 获取所有待审核记录
+ *     description: 管理员获取所有待审核的图片记录
+ *     responses:
+ *       200:
+ *         description: 成功获取所有待审核记录
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                     example: 1a2b3c4d
+ *                   filename:
+ *                     type: string
+ *                     example: a1b2c3d4e5f-1632123456789-123456789.jpg
+ *                   text:
+ *                     type: string
+ *                     example: 这是一张美丽的风景图片
+ *                   uploadTime:
+ *                     type: string
+ *                     format: date-time
+ *                     example: 2023-09-20T10:30:00.000Z
+ *                   fileSize:
+ *                     type: integer
+ *                     example: 102400
+ *                   uploaderIP:
+ *                     type: string
+ *                     example: ::1
+ *                   status:
+ *                     type: string
+ *                     example: pending
+ *       500:
+ *         description: 服务器内部错误
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 服务器内部错误
+ */
+// 获取所有待审核记录接口（管理员使用）
+app.get('/api/records/pending', async (req, res) => {
+  try {
+    const data = await db.getPendingRecords();
+    res.status(200).json(data);
+  } catch (error) {
+    console.error('获取待审核记录错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+/**
+ * @swagger
+ * /records/{id}/review:
+ *   post:
+ *     summary: 审核记录
+ *     description: 管理员审核指定ID的图片记录
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: 记录ID
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 description: 审核状态（approved 或 rejected）
+ *                 example: approved
+ *             required:
+ *               - status
+ *     responses:
+ *       200:
+ *         description: 审核成功
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                   example: 1a2b3c4d
+ *                 status:
+ *                   type: string
+ *                   example: approved
+ *       400:
+ *         description: 无效的审核状态
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 无效的审核状态
+ *       404:
+ *         description: 记录不存在
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 记录不存在
+ *       500:
+ *         description: 服务器内部错误
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 服务器内部错误
+ */
+// 审核记录接口（管理员使用）
+app.post('/api/records/:id/review', async (req, res) => {
+  try {
+    const recordId = req.params.id;
+    const { status } = req.body;
+
+    // 审核记录
+    const result = await db.reviewRecord(recordId, status);
+
+    // 返回成功响应
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('审核记录错误:', error);
+    
+    if (error.message === '无效的审核状态') {
+      return res.status(400).json({ error: '无效的审核状态' });
+    }
+    
+    if (error.message === '记录不存在') {
+      return res.status(404).json({ error: '记录不存在' });
+    }
+    
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+/**
+ * @swagger
  * /random:
  *   get:
- *     summary: 随机获取一条记录
- *     description: 随机返回一条图片记录
+ *     summary: 随机获取一条已审核通过的记录
+ *     description: 随机返回一条已审核通过的图片记录
  *     responses:
  *       200:
  *         description: 成功获取随机记录
@@ -353,6 +516,9 @@ app.get('/api/records', async (req, res) => {
  *                 uploaderIP:
  *                   type: string
  *                   example: ::1
+ *                 status:
+ *                   type: string
+ *                   example: approved
  *       404:
  *         description: 没有可用的记录
  *         content:
@@ -374,7 +540,7 @@ app.get('/api/records', async (req, res) => {
  *                   type: string
  *                   example: 服务器内部错误
  */
-// 随机获取一个图片和文字的接口
+// 随机获取一个已审核通过的图片和文字的接口
 app.get('/api/random', async (req, res) => {
   try {
     const randomRecord = await db.getRandomRecord();
@@ -397,7 +563,7 @@ app.get('/api/random', async (req, res) => {
  * /records/{id}/comments:
  *   post:
  *     summary: 添加评论
- *     description: 为指定ID的图片记录添加评论
+ *     description: 为指定ID的已审核通过的图片记录添加评论
  *     parameters:
  *       - in: path
  *         name: id
@@ -448,7 +614,7 @@ app.get('/api/random', async (req, res) => {
  *                       format: date-time
  *                       example: 2023-09-20T11:00:00.000Z
  *       400:
- *         description: 评论内容不能为空
+ *         description: 评论内容不能为空或记录未审核通过
  *         content:
  *           application/json:
  *             schema:
@@ -458,7 +624,7 @@ app.get('/api/random', async (req, res) => {
  *                   type: string
  *                   example: 评论内容不能为空
  *       404:
- *         description: 指定的记录不存在
+ *         description: 指定的记录不存在或未审核通过
  *         content:
  *           application/json:
  *             schema:
@@ -466,7 +632,7 @@ app.get('/api/random', async (req, res) => {
  *               properties:
  *                 error:
  *                   type: string
- *                   example: 指定的记录不存在
+ *                   example: 指定的记录不存在或未审核通过
  *       500:
  *         description: 服务器内部错误
  *         content:
@@ -509,8 +675,8 @@ app.post('/api/records/:id/comments', async (req, res) => {
   } catch (error) {
     console.error('添加评论错误:', error);
     
-    if (error.message === '指定的记录不存在') {
-      return res.status(404).json({ error: '指定的记录不存在' });
+    if (error.message === '指定的记录不存在或未审核通过') {
+      return res.status(404).json({ error: '指定的记录不存在或未审核通过' });
     }
     
     res.status(500).json({ error: '服务器内部错误' });

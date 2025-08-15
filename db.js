@@ -21,14 +21,15 @@ function initializeDatabase() {
 
   // 创建表
   db.serialize(() => {
-    // 创建记录表
+    // 创建记录表（添加status字段，默认为'pending'）
     db.run(`CREATE TABLE IF NOT EXISTS records (
       id TEXT PRIMARY KEY,
       filename TEXT NOT NULL,
       text TEXT,
       uploadTime TEXT NOT NULL,
       fileSize INTEGER,
-      uploaderIP TEXT
+      uploaderIP TEXT,
+      status TEXT DEFAULT 'pending'
     )`, (err) => {
       if (err) {
         console.error('创建记录表失败:', err.message);
@@ -182,15 +183,16 @@ function saveRecord(record) {
     // 为记录生成唯一ID
     const uniqueId = generateUniqueId();
     
-    const sql = `INSERT INTO records(id, filename, text, uploadTime, fileSize, uploaderIP)
-                 VALUES(?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO records(id, filename, text, uploadTime, fileSize, uploaderIP, status)
+                 VALUES(?, ?, ?, ?, ?, ?, ?)`;
     const params = [
       uniqueId,
       record.filename,
       record.text,
       record.uploadTime,
       record.fileSize,
-      record.uploaderIP
+      record.uploaderIP,
+      'pending' // 默认状态为待审核
     ];
 
     db.run(sql, params, function(err) {
@@ -203,7 +205,8 @@ function saveRecord(record) {
           text: record.text,
           uploadTime: record.uploadTime,
           fileSize: record.fileSize,
-          uploaderIP: record.uploaderIP
+          uploaderIP: record.uploaderIP,
+          status: 'pending'
         });
       }
     });
@@ -213,7 +216,7 @@ function saveRecord(record) {
 // 获取所有记录
 function getAllRecords() {
   return new Promise((resolve, reject) => {
-    const sql = `SELECT id, filename, text, uploadTime, fileSize, uploaderIP FROM records`;
+    const sql = `SELECT id, filename, text, uploadTime, fileSize, uploaderIP, status FROM records`;
 
     db.all(sql, [], (err, rows) => {
       if (err) {
@@ -225,11 +228,52 @@ function getAllRecords() {
   });
 }
 
-// 获取随机记录
+// 获取所有待审核记录
+function getPendingRecords() {
+  return new Promise((resolve, reject) => {
+    const sql = `SELECT id, filename, text, uploadTime, fileSize, uploaderIP, status FROM records WHERE status = 'pending'`;
+
+    db.all(sql, [], (err, rows) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(rows);
+      }
+    });
+  });
+}
+
+// 审核记录
+function reviewRecord(id, status) {
+  return new Promise((resolve, reject) => {
+    // 检查状态是否有效
+    if (!['approved', 'rejected'].includes(status)) {
+      reject(new Error('无效的审核状态'));
+      return;
+    }
+
+    const sql = `UPDATE records SET status = ? WHERE id = ?`;
+    const params = [status, id];
+
+    db.run(sql, params, function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        if (this.changes === 0) {
+          reject(new Error('记录不存在'));
+        } else {
+          resolve({ id, status });
+        }
+      }
+    });
+  });
+}
+
+// 获取随机记录（仅获取已审核通过的记录）
 function getRandomRecord() {
   return new Promise((resolve, reject) => {
     // 先获取记录总数
-    db.get(`SELECT COUNT(*) as count FROM records`, [], (err, row) => {
+    db.get(`SELECT COUNT(*) as count FROM records WHERE status = 'approved'`, [], (err, row) => {
       if (err) {
         reject(err);
         return;
@@ -245,8 +289,8 @@ function getRandomRecord() {
       const randomOffset = Math.floor(Math.random() * count);
 
       // 获取随机记录
-      const sql = `SELECT id, filename, text, uploadTime, fileSize, uploaderIP 
-                   FROM records LIMIT 1 OFFSET ?`;
+      const sql = `SELECT id, filename, text, uploadTime, fileSize, uploaderIP, status
+                   FROM records WHERE status = 'approved' LIMIT 1 OFFSET ?`;
       
       db.get(sql, [randomOffset], (err, row) => {
         if (err) {
@@ -259,11 +303,26 @@ function getRandomRecord() {
   });
 }
 
+// 获取已审核通过的记录
+function getApprovedRecords() {
+  return new Promise((resolve, reject) => {
+    const sql = `SELECT id, filename, text, uploadTime, fileSize, uploaderIP, status FROM records WHERE status = 'approved'`;
+
+    db.all(sql, [], (err, rows) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(rows);
+      }
+    });
+  });
+}
+
 // 添加评论
 function addComment(recordId, comment) {
   return new Promise((resolve, reject) => {
-    // 检查记录是否存在
-    const checkSql = `SELECT id FROM records WHERE id = ?`;
+    // 检查记录是否存在且已审核通过
+    const checkSql = `SELECT id FROM records WHERE id = ? AND status = 'approved'`;
     db.get(checkSql, [recordId], (err, row) => {
       if (err) {
         reject(err);
@@ -271,7 +330,7 @@ function addComment(recordId, comment) {
       }
       
       if (!row) {
-        reject(new Error('指定的记录不存在'));
+        reject(new Error('指定的记录不存在或未审核通过'));
         return;
       }
 
@@ -345,7 +404,10 @@ module.exports = {
   checkUploadLimit,
   saveRecord,
   getAllRecords,
+  getPendingRecords,
+  reviewRecord,
   getRandomRecord,
+  getApprovedRecords,
   addComment,
   getCommentsByRecordId,
   closeDatabase
