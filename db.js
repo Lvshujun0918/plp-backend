@@ -52,6 +52,21 @@ function initializeDatabase() {
         console.log('评论表已准备就绪');
       }
     });
+
+    // 创建秘钥表
+    db.run(`CREATE TABLE IF NOT EXISTS keys (
+      key TEXT PRIMARY KEY,
+      ip TEXT NOT NULL,
+      userAgent TEXT NOT NULL,
+      createDate TEXT NOT NULL,
+      used INTEGER DEFAULT 0
+    )`, (err) => {
+      if (err) {
+        console.error('创建秘钥表失败:', err.message);
+      } else {
+        console.log('秘钥表已准备就绪');
+      }
+    });
   });
 }
 
@@ -62,6 +77,103 @@ function generateUniqueId() {
   const randomPart = crypto.randomBytes(8).toString('hex');
   const uniqueId = `${timestamp}-${randomPart}`;
   return uniqueId;
+}
+
+// 生成秘钥
+function generateKey(ip, userAgent) {
+  // 获取当前日期（年-月-日）
+  const today = new Date().toISOString().split('T')[0];
+  // 使用IP、User-Agent和日期生成哈希
+  const hash = crypto.createHash('sha256');
+  hash.update(ip + userAgent + today);
+  return hash.digest('hex');
+}
+
+// 保存秘钥
+function saveKey(key, ip, userAgent) {
+  return new Promise((resolve, reject) => {
+    const sql = `INSERT OR REPLACE INTO keys(key, ip, userAgent, createDate)
+                 VALUES(?, ?, ?, ?)`;
+    const params = [
+      key,
+      ip,
+      userAgent,
+      new Date().toISOString().split('T')[0] // 只保存日期部分
+    ];
+
+    db.run(sql, params, function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve({
+          key: key,
+          ip: ip,
+          userAgent: userAgent,
+          createDate: new Date().toISOString().split('T')[0]
+        });
+      }
+    });
+  });
+}
+
+// 验证秘钥
+function validateKey(key, ip, userAgent) {
+  return new Promise((resolve, reject) => {
+    const sql = `SELECT * FROM keys WHERE key = ? AND ip = ? AND userAgent = ? AND used = 0`;
+    const params = [key, ip, userAgent];
+
+    db.get(sql, params, (err, row) => {
+      if (err) {
+        reject(err);
+      } else {
+        // 检查秘钥是否存在且未使用
+        if (row) {
+          // 检查秘钥是否在今天生成
+          const today = new Date().toISOString().split('T')[0];
+          if (row.createDate === today) {
+            resolve(true);
+          } else {
+            resolve(false);
+          }
+        } else {
+          resolve(false);
+        }
+      }
+    });
+  });
+}
+
+// 标记秘钥为已使用
+function markKeyAsUsed(key) {
+  return new Promise((resolve, reject) => {
+    const sql = `UPDATE keys SET used = 1 WHERE key = ?`;
+    const params = [key];
+
+    db.run(sql, params, function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(this.changes > 0); // 返回是否更新了记录
+      }
+    });
+  });
+}
+
+// 检查IP在今天是否已上传
+function checkUploadLimit(ip) {
+  return new Promise((resolve, reject) => {
+    const today = new Date().toISOString().split('T')[0];
+    const sql = `SELECT COUNT(*) as count FROM records WHERE uploaderIP = ? AND date(uploadTime) = ?`;
+    const params = [ip, today];
+
+    db.get(sql, params, (err, row) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(row.count > 0); // 如果今天已上传过，返回true
+      }
+    });
+  });
 }
 
 // 保存记录
@@ -226,6 +338,11 @@ function closeDatabase() {
 
 module.exports = {
   initializeDatabase,
+  generateKey,
+  saveKey,
+  validateKey,
+  markKeyAsUsed,
+  checkUploadLimit,
   saveRecord,
   getAllRecords,
   getRandomRecord,

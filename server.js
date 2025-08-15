@@ -41,14 +41,14 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 
 // Swagger配置
 const options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: '漂流瓶后端Api',
+      title: '图片上传与评论系统 API',
       version: '1.0.0',
       description: '一个基于 Node.js 和 SQLite 的图片上传和评论系统',
     },
@@ -75,10 +75,69 @@ app.use('/uploads', express.static('uploads'));
 
 /**
  * @swagger
+ * /key:
+ *   get:
+ *     summary: 获取上传秘钥
+ *     description: 根据IP地址和User-Agent生成一个当日有效的上传秘钥
+ *     responses:
+ *       200:
+ *         description: 成功生成秘钥
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 key:
+ *                   type: string
+ *                   example: 5f4dcc3b5aa765d61d8327deb882cf99
+ *       500:
+ *         description: 服务器内部错误
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 服务器内部错误
+ */
+// 获取秘钥接口
+app.get('/api/key', async (req, res) => {
+  try {
+    // 获取客户端IP地址
+    const clientIP = req.connection.remoteAddress || req.socket.remoteAddress || 
+                    (req.connection.socket ? req.connection.socket.remoteAddress : null) ||
+                    (req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown');
+    
+    // 获取User-Agent
+    const userAgent = req.get('User-Agent') || 'unknown';
+    
+    // 检查今日是否已上传过
+    const hasUploaded = await db.checkUploadLimit(clientIP);
+    if (hasUploaded) {
+      return res.status(400).json({ error: '您今天已经上传过图片了' });
+    }
+    
+    // 生成秘钥
+    const key = db.generateKey(clientIP, userAgent);
+    
+    // 保存秘钥
+    await db.saveKey(key, clientIP, userAgent);
+    
+    // 返回秘钥
+    res.status(200).json({ key });
+  } catch (error) {
+    console.error('获取秘钥错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+/**
+ * @swagger
  * /upload:
  *   post:
  *     summary: 上传图片
- *     description: 上传图片并添加描述文字
+ *     description: 使用有效的秘钥上传图片并添加描述文字
  *     requestBody:
  *       required: true
  *       content:
@@ -93,6 +152,9 @@ app.use('/uploads', express.static('uploads'));
  *               text:
  *                 type: string
  *                 description: 图片描述文字
+ *               key:
+ *                 type: string
+ *                 description: 上传秘钥
  *     responses:
  *       200:
  *         description: 上传成功
@@ -127,7 +189,7 @@ app.use('/uploads', express.static('uploads'));
  *                       type: string
  *                       example: ::1
  *       400:
- *         description: 没有上传文件
+ *         description: 秘钥无效或今日已上传过
  *         content:
  *           application/json:
  *             schema:
@@ -135,7 +197,7 @@ app.use('/uploads', express.static('uploads'));
  *               properties:
  *                 error:
  *                   type: string
- *                   example: 没有上传文件
+ *                   example: 秘钥无效或已使用
  *       500:
  *         description: 服务器内部错误
  *         content:
@@ -155,8 +217,28 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
       return res.status(400).json({ error: '没有上传文件' });
     }
 
-    // 获取文字信息
+    // 获取文字信息和秘钥
     const text = req.body.text || '';
+    const key = req.body.key;
+
+    // 获取客户端IP地址和User-Agent
+    const clientIP = req.connection.remoteAddress || req.socket.remoteAddress || 
+                    (req.connection.socket ? req.connection.socket.remoteAddress : null) ||
+                    (req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown');
+    const userAgent = req.get('User-Agent') || 'unknown';
+
+    // 验证秘钥
+    if (!key) {
+      return res.status(400).json({ error: '缺少秘钥' });
+    }
+
+    const isValidKey = await db.validateKey(key, clientIP, userAgent);
+    if (!isValidKey) {
+      return res.status(400).json({ error: '秘钥无效或已使用' });
+    }
+
+    // 标记秘钥为已使用
+    await db.markKeyAsUsed(key);
 
     // 创建新记录（已去除originalname字段，ID由数据库模块生成）
     const record = {
@@ -164,9 +246,7 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
       text: text,
       uploadTime: new Date().toISOString(),
       fileSize: req.file.size,
-      uploaderIP: req.connection.remoteAddress || req.socket.remoteAddress || 
-                  (req.connection.socket ? req.connection.socket.remoteAddress : null) ||
-                  (req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown')
+      uploaderIP: clientIP
     };
 
     // 保存记录到数据库
