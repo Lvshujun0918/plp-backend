@@ -38,7 +38,12 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage: storage });
+// 创建一个内存存储的multer实例，用于临时存储文件
+const memoryStorage = multer.memoryStorage();
+const uploadToMemory = multer({ storage: memoryStorage });
+
+// 创建一个磁盘存储的multer实例
+const uploadToDisk = multer({ storage: storage });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -213,7 +218,7 @@ app.get('/api/key', async (req, res) => {
  *                   example: 服务器内部错误
  */
 // 上传图片并记录文字的接口
-app.post('/api/upload', upload.single('image'), async (req, res) => {
+app.post('/api/upload', uploadToMemory.single('image'), async (req, res) => {
   try {
     // 检查是否上传了文件
     if (!req.file) {
@@ -243,9 +248,16 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
     // 标记秘钥为已使用
     await db.markKeyAsUsed(key);
 
+    // 生成文件名
+    const ipHash = crypto.createHash('md5').update(clientIP).digest('hex');
+    const timestamp = Date.now();
+    const randomSuffix = Math.round(Math.random() * 1E9);
+    const ext = path.extname(req.file.originalname);
+    const filename = ipHash + '-' + timestamp + '-' + randomSuffix + ext;
+
     // 创建新记录（已去除originalname字段，ID由数据库模块生成）
     const record = {
-      filename: req.file.filename,
+      filename: filename,
       text: text,
       uploadTime: new Date().toISOString(),
       fileSize: req.file.size,
@@ -254,6 +266,10 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
 
     // 保存记录到数据库
     const savedRecord = await db.saveRecord(record);
+
+    // 将文件写入磁盘
+    const filePath = path.join(uploadDir, filename);
+    fs.writeFileSync(filePath, req.file.buffer);
 
     // 返回成功响应
     res.status(200).json({
@@ -462,6 +478,21 @@ app.post('/api/records/:id/review', async (req, res) => {
   try {
     const recordId = req.params.id;
     const { status } = req.body;
+
+    // 如果审核状态为rejected，删除对应的文件
+    if (status === 'rejected') {
+      // 先获取记录信息
+      const records = await db.getAllRecords();
+      const record = records.find(r => r.id === recordId);
+      
+      if (record) {
+        // 删除文件
+        const filePath = path.join(uploadDir, record.filename);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+    }
 
     // 审核记录
     const result = await db.reviewRecord(recordId, status);
