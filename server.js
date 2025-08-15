@@ -41,14 +41,14 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // Swagger配置
 const options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: '图片上传与评论系统 API',
+      title: '漂流瓶后端Api',
       version: '1.0.0',
       description: '一个基于 Node.js 和 SQLite 的图片上传和评论系统',
     },
