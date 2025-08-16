@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const db = require('./db');
+const jwt = require('jsonwebtoken');
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
 
@@ -48,6 +49,9 @@ const uploadToDisk = multer({ storage: storage });
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// JWT密钥
+const JWT_SECRET = process.env.JWT_SECRET || 'plp_backend_default_secret_key';
+
 // Swagger配置
 const options = {
   definition: {
@@ -63,6 +67,18 @@ const options = {
         description: '开发服务器',
       },
     ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        }
+      }
+    },
+    security: [{
+      bearerAuth: []
+    }]
   },
   apis: ['./server.js'], // 指向包含注释的文件
 };
@@ -93,12 +109,14 @@ function requireAdminAuth(req, res, next) {
   
   const token = authHeader.substring(7); // 去掉 "Bearer " 前缀
   
-  // 简单的token验证（在实际应用中应该使用更安全的方法）
-  if (token !== process.env.ADMIN_TOKEN && token !== 'default_admin_token') {
+  try {
+    // 验证JWT token
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.admin = decoded;
+    next();
+  } catch (err) {
     return res.status(401).json({ error: '认证失败' });
   }
-  
-  next();
 }
 
 /**
@@ -188,7 +206,7 @@ app.post('/api/admin/init', async (req, res) => {
  *               properties:
  *                 token:
  *                   type: string
- *                   example: your_admin_token
+ *                   example: your_jwt_token
  *       401:
  *         description: 密码错误
  *         content:
@@ -226,8 +244,12 @@ app.post('/api/admin/login', async (req, res) => {
       return res.status(401).json({ error: '密码错误' });
     }
     
-    // 生成访问令牌（在实际应用中应该使用JWT等更安全的方式）
-    const token = process.env.ADMIN_TOKEN || 'default_admin_token';
+    // 生成JWT访问令牌
+    const token = jwt.sign(
+      { id: 1, role: 'admin' }, 
+      JWT_SECRET, 
+      { expiresIn: '24h' }
+    );
     
     res.status(200).json({ token });
   } catch (error) {
@@ -966,9 +988,9 @@ const server = app.listen(PORT, () => {
   console.log(`服务器运行在端口 ${PORT}`);
   console.log(`API文档地址: http://localhost:${PORT}/api-docs`);
   
-  // 如果没有设置环境变量ADMIN_TOKEN，则使用默认值
-  if (!process.env.ADMIN_TOKEN) {
-    console.log('注意：使用默认管理员令牌，生产环境请设置 ADMIN_TOKEN 环境变量');
+  // 如果没有设置环境变量JWT_SECRET，则使用默认值
+  if (!process.env.JWT_SECRET) {
+    console.log('注意：使用默认JWT密钥，生产环境请设置 JWT_SECRET 环境变量');
   }
 });
 
