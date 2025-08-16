@@ -78,6 +78,164 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
+// 管理员鉴权中间件
+function requireAdminAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader) {
+    return res.status(401).json({ error: '缺少认证信息' });
+  }
+  
+  // 检查是否为Bearer token格式
+  if (!authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: '认证格式错误' });
+  }
+  
+  const token = authHeader.substring(7); // 去掉 "Bearer " 前缀
+  
+  // 简单的token验证（在实际应用中应该使用更安全的方法）
+  if (token !== process.env.ADMIN_TOKEN && token !== 'default_admin_token') {
+    return res.status(401).json({ error: '认证失败' });
+  }
+  
+  next();
+}
+
+/**
+ * @swagger
+ * /admin/init:
+ *   post:
+ *     summary: 初始化管理员密码
+ *     description: 设置管理员密码（仅在首次使用时调用）
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 description: 管理员密码
+ *             required:
+ *               - password
+ *     responses:
+ *       200:
+ *         description: 密码设置成功
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: 管理员密码设置成功
+ *       500:
+ *         description: 服务器内部错误
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 服务器内部错误
+ */
+// 初始化管理员密码接口
+app.post('/api/admin/init', async (req, res) => {
+  try {
+    const { password } = req.body;
+    
+    if (!password) {
+      return res.status(400).json({ error: '密码不能为空' });
+    }
+    
+    // 设置管理员密码
+    await db.setAdminPassword(password);
+    
+    res.status(200).json({ message: '管理员密码设置成功' });
+  } catch (error) {
+    console.error('设置管理员密码错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+/**
+ * @swagger
+ * /admin/login:
+ *   post:
+ *     summary: 管理员登录
+ *     description: 使用管理员密码登录获取访问令牌
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 description: 管理员密码
+ *             required:
+ *               - password
+ *     responses:
+ *       200:
+ *         description: 登录成功
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                   example: your_admin_token
+ *       401:
+ *         description: 密码错误
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 密码错误
+ *       500:
+ *         description: 服务器内部错误
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 服务器内部错误
+ */
+// 管理员登录接口
+app.post('/api/admin/login', async (req, res) => {
+  try {
+    const { password } = req.body;
+    
+    if (!password) {
+      return res.status(400).json({ error: '密码不能为空' });
+    }
+    
+    // 验证管理员密码
+    const isValid = await db.validateAdminPassword(password);
+    
+    if (!isValid) {
+      return res.status(401).json({ error: '密码错误' });
+    }
+    
+    // 生成访问令牌（在实际应用中应该使用JWT等更安全的方式）
+    const token = process.env.ADMIN_TOKEN || 'default_admin_token';
+    
+    res.status(200).json({ token });
+  } catch (error) {
+    console.error('管理员登录错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 /**
  * @swagger
  * /key:
@@ -348,6 +506,8 @@ app.get('/api/records', async (req, res) => {
  *   get:
  *     summary: 获取所有待审核记录
  *     description: 管理员获取所有待审核的图片记录
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: 成功获取所有待审核记录
@@ -380,6 +540,16 @@ app.get('/api/records', async (req, res) => {
  *                   status:
  *                     type: string
  *                     example: pending
+ *       401:
+ *         description: 未授权访问
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 缺少认证信息
  *       500:
  *         description: 服务器内部错误
  *         content:
@@ -392,7 +562,7 @@ app.get('/api/records', async (req, res) => {
  *                   example: 服务器内部错误
  */
 // 获取所有待审核记录接口（管理员使用）
-app.get('/api/records/pending', async (req, res) => {
+app.get('/api/records/pending', requireAdminAuth, async (req, res) => {
   try {
     const data = await db.getPendingRecords();
     res.status(200).json(data);
@@ -408,6 +578,8 @@ app.get('/api/records/pending', async (req, res) => {
  *   post:
  *     summary: 审核记录
  *     description: 管理员审核指定ID的图片记录
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -452,6 +624,16 @@ app.get('/api/records/pending', async (req, res) => {
  *                 error:
  *                   type: string
  *                   example: 无效的审核状态
+ *       401:
+ *         description: 未授权访问
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 缺少认证信息
  *       404:
  *         description: 记录不存在
  *         content:
@@ -474,7 +656,7 @@ app.get('/api/records/pending', async (req, res) => {
  *                   example: 服务器内部错误
  */
 // 审核记录接口（管理员使用）
-app.post('/api/records/:id/review', async (req, res) => {
+app.post('/api/records/:id/review', requireAdminAuth, async (req, res) => {
   try {
     const recordId = req.params.id;
     const { status } = req.body;
@@ -783,6 +965,11 @@ app.get('/api/records/:id/comments', async (req, res) => {
 const server = app.listen(PORT, () => {
   console.log(`服务器运行在端口 ${PORT}`);
   console.log(`API文档地址: http://localhost:${PORT}/api-docs`);
+  
+  // 如果没有设置环境变量ADMIN_TOKEN，则使用默认值
+  if (!process.env.ADMIN_TOKEN) {
+    console.log('注意：使用默认管理员令牌，生产环境请设置 ADMIN_TOKEN 环境变量');
+  }
 });
 
 // 优雅关闭服务器

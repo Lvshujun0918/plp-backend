@@ -68,6 +68,19 @@ function initializeDatabase() {
         console.log('秘钥表已准备就绪');
       }
     });
+
+    // 创建管理员表
+    db.run(`CREATE TABLE IF NOT EXISTS admin (
+      id INTEGER PRIMARY KEY,
+      passwordHash TEXT NOT NULL,
+      salt TEXT NOT NULL
+    )`, (err) => {
+      if (err) {
+        console.error('创建管理员表失败:', err.message);
+      } else {
+        console.log('管理员表已准备就绪');
+      }
+    });
   });
 }
 
@@ -172,6 +185,53 @@ function checkUploadLimit(ip) {
         reject(err);
       } else {
         resolve(row.count > 0); // 如果今天已上传过，返回true
+      }
+    });
+  });
+}
+
+// 设置管理员密码
+function setAdminPassword(password) {
+  return new Promise((resolve, reject) => {
+    // 生成盐值
+    const salt = crypto.randomBytes(16).toString('hex');
+    
+    // 使用盐值和密码生成哈希
+    const hash = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
+    
+    // 保存到数据库
+    const sql = `INSERT OR REPLACE INTO admin(id, passwordHash, salt) VALUES(1, ?, ?)`;
+    const params = [hash, salt];
+    
+    db.run(sql, params, function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+// 验证管理员密码
+function validateAdminPassword(password) {
+  return new Promise((resolve, reject) => {
+    const sql = `SELECT passwordHash, salt FROM admin WHERE id = 1`;
+    
+    db.get(sql, [], (err, row) => {
+      if (err) {
+        reject(err);
+      } else {
+        if (!row) {
+          // 如果没有设置管理员密码，默认验证失败
+          resolve(false);
+        } else {
+          // 使用存储的盐值和提供的密码生成哈希
+          const hash = crypto.pbkdf2Sync(password, row.salt, 10000, 64, 'sha512').toString('hex');
+          
+          // 比较哈希值
+          resolve(hash === row.passwordHash);
+        }
       }
     });
   });
@@ -402,6 +462,8 @@ module.exports = {
   validateKey,
   markKeyAsUsed,
   checkUploadLimit,
+  setAdminPassword,
+  validateAdminPassword,
   saveRecord,
   getAllRecords,
   getPendingRecords,
