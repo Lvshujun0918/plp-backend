@@ -340,6 +340,10 @@ app.get('/api/key', async (req, res) => {
  *               key:
  *                 type: string
  *                 description: 上传秘钥
+ *               carrier:
+ *                 type: integer
+ *                 description: 类型字段，0表示可编辑，1表示不可编辑
+ *                 example: 0
  *     responses:
  *       200:
  *         description: 上传成功
@@ -376,6 +380,9 @@ app.get('/api/key', async (req, res) => {
  *                     status:
  *                       type: string
  *                       example: pending
+ *                     carrier:
+ *                       type: integer
+ *                       example: 0
  *       400:
  *         description: 秘钥无效或今日已上传过
  *         content:
@@ -408,6 +415,7 @@ app.post('/api/upload', uploadToMemory.single('image'), async (req, res) => {
     // 获取文字信息和秘钥
     const text = req.body.text || '';
     const key = req.body.key;
+    const carrier = parseInt(req.body.carrier) || 0; // 默认为可编辑
 
     // 获取客户端IP地址和User-Agent
     const clientIP = req.connection.remoteAddress || req.socket.remoteAddress || 
@@ -441,7 +449,8 @@ app.post('/api/upload', uploadToMemory.single('image'), async (req, res) => {
       text: text,
       uploadTime: new Date().toISOString(),
       fileSize: req.file.size,
-      uploaderIP: clientIP
+      uploaderIP: clientIP,
+      carrier: carrier
     };
 
     // 保存记录到数据库
@@ -500,6 +509,9 @@ app.post('/api/upload', uploadToMemory.single('image'), async (req, res) => {
  *                   status:
  *                     type: string
  *                     example: approved
+ *                   carrier:
+ *                     type: integer
+ *                     example: 0
  *       500:
  *         description: 服务器内部错误
  *         content:
@@ -562,6 +574,9 @@ app.get('/api/records', async (req, res) => {
  *                   status:
  *                     type: string
  *                     example: pending
+ *                   carrier:
+ *                     type: integer
+ *                     example: 0
  *       401:
  *         description: 未授权访问
  *         content:
@@ -720,6 +735,131 @@ app.post('/api/records/:id/review', requireAdminAuth, async (req, res) => {
 
 /**
  * @swagger
+ * /records/{id}:
+ *   put:
+ *     summary: 编辑记录
+ *     description: 编辑指定ID的可编辑记录（仅可编辑且已审核通过的记录）
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: 记录ID
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               text:
+ *                 type: string
+ *                 description: 新的文字内容（留空表示不更改）
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: 新的图片文件（留空表示不更改）
+ *     responses:
+ *       200:
+ *         description: 编辑成功
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                   example: 1a2b3c4d
+ *                 filename:
+ *                   type: string
+ *                   example: a1b2c3d4e5f-1632123456789-123456789.jpg
+ *                 text:
+ *                   type: string
+ *                   example: 这是一张美丽的风景图片
+ *                 uploadTime:
+ *                   type: string
+ *                   format: date-time
+ *                   example: 2023-09-20T10:30:00.000Z
+ *                 fileSize:
+ *                   type: integer
+ *                   example: 102400
+ *                 uploaderIP:
+ *                   type: string
+ *                   example: ::1
+ *                 status:
+ *                   type: string
+ *                   example: approved
+ *                 carrier:
+ *                   type: integer
+ *                   example: 0
+ *       400:
+ *         description: 记录不可编辑或参数错误
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 记录不存在、不可编辑或未审核通过
+ *       404:
+ *         description: 记录不存在
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 记录不存在
+ *       500:
+ *         description: 服务器内部错误
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 服务器内部错误
+ */
+// 编辑记录接口
+app.put('/api/records/:id', uploadToMemory.single('image'), async (req, res) => {
+  try {
+    const recordId = req.params.id;
+    const { text } = req.body;
+
+    // 构建更新对象
+    const updates = {};
+    if (text !== undefined) {
+      updates.text = text;
+    }
+    
+    // 如果上传了新图片，则添加图片信息
+    if (req.file) {
+      updates.imageBuffer = req.file.buffer;
+      updates.originalname = req.file.originalname;
+    }
+
+    // 编辑记录
+    const result = await db.editRecord(recordId, updates, uploadDir);
+
+    // 返回成功响应
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('编辑记录错误:', error);
+    
+    if (error.message === '记录不存在、不可编辑或未审核通过') {
+      return res.status(400).json({ error: '记录不存在、不可编辑或未审核通过' });
+    }
+    
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+/**
+ * @swagger
  * /random:
  *   get:
  *     summary: 随机获取一条已审核通过的记录
@@ -754,6 +894,9 @@ app.post('/api/records/:id/review', requireAdminAuth, async (req, res) => {
  *                 status:
  *                   type: string
  *                   example: approved
+ *                 carrier:
+ *                   type: integer
+ *                   example: 0
  *       404:
  *         description: 没有可用的记录
  *         content:
