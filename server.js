@@ -339,6 +339,9 @@ app.get('/api/key', async (req, res) => {
  *               text:
  *                 type: string
  *                 description: 图片描述文字
+ *               title:
+ *                 type: string
+ *                 description: 图片标题
  *               key:
  *                 type: string
  *                 description: 上传秘钥
@@ -346,10 +349,6 @@ app.get('/api/key', async (req, res) => {
  *                 type: integer
  *                 description: 类型字段，0表示可编辑，1表示不可编辑
  *                 example: 0
- *               fantasy:
- *                 type: integer
- *                 description: 图片张数记录
- *                 example: 3
  *     responses:
  *       200:
  *         description: 上传成功
@@ -373,6 +372,9 @@ app.get('/api/key', async (req, res) => {
  *                     text:
  *                       type: string
  *                       example: 这是一张美丽的风景图片
+ *                     title:
+ *                       type: string
+ *                       example: 美丽的风景
  *                     uploadTime:
  *                       type: string
  *                       format: date-time
@@ -418,6 +420,7 @@ app.post('/api/upload', uploadToMemory.array('images', 10), async (req, res) => 
   try {
     // 获取文字信息和秘钥
     const text = req.body.text || '';
+    const title = req.body.title || ''; // 获取标题
     const key = req.body.key;
     const carrier = parseInt(req.body.carrier) || 0; // 默认为可编辑
     const imageCount = req.files ? req.files.length : 0; // 根据实际上传的图片数量生成fantasy值
@@ -468,6 +471,7 @@ app.post('/api/upload', uploadToMemory.array('images', 10), async (req, res) => 
     const record = {
       filename: filename,
       text: text,
+      title: title, // 添加标题
       uploadTime: new Date().toISOString(),
       fileSize: fileSize,
       uploaderIP: clientIP,
@@ -514,6 +518,9 @@ app.post('/api/upload', uploadToMemory.array('images', 10), async (req, res) => 
  *                   text:
  *                     type: string
  *                     example: 这是一张美丽的风景图片
+ *                   title:
+ *                     type: string
+ *                     example: 美丽的风景
  *                   uploadTime:
  *                     type: string
  *                     format: date-time
@@ -582,6 +589,9 @@ app.get('/api/records', async (req, res) => {
  *                   text:
  *                     type: string
  *                     example: 这是一张美丽的风景图片
+ *                   title:
+ *                     type: string
+ *                     example: 美丽的风景
  *                   uploadTime:
  *                     type: string
  *                     format: date-time
@@ -780,15 +790,15 @@ app.post('/api/records/:id/review', requireAdminAuth, async (req, res) => {
  *               text:
  *                 type: string
  *                 description: 新的文字内容（留空表示不更改）
+ *               title:
+ *                 type: string
+ *                 description: 新的标题（留空表示不更改）
  *               images:
  *                 type: array
  *                 items:
  *                   type: string
  *                   format: binary
  *                 description: 新的图片文件数组（留空表示不更改，支持0张或多张）
- *               fantasy:
- *                 type: integer
- *                 description: 图片张数记录（留空表示不更改）
  *     responses:
  *       200:
  *         description: 编辑成功
@@ -806,6 +816,9 @@ app.post('/api/records/:id/review', requireAdminAuth, async (req, res) => {
  *                 text:
  *                   type: string
  *                   example: 这是一张美丽的风景图片
+ *                 title:
+ *                   type: string
+ *                   example: 美丽的风景
  *                 uploadTime:
  *                   type: string
  *                   format: date-time
@@ -860,7 +873,7 @@ app.post('/api/records/:id/review', requireAdminAuth, async (req, res) => {
 app.put('/api/records/:id', uploadToMemory.array('images', 10), async (req, res) => {
   try {
     const recordId = req.params.id;
-    const { text, fantasy } = req.body;
+    const { text, title } = req.body; // 获取标题
 
     // 获取客户端IP地址
     const clientIP = req.connection.remoteAddress || req.socket.remoteAddress || 
@@ -871,6 +884,10 @@ app.put('/api/records/:id', uploadToMemory.array('images', 10), async (req, res)
     const updates = {};
     if (text !== undefined) {
       updates.text = text;
+    }
+    
+    if (title !== undefined) {
+      updates.title = title;
     }
     
     // 如果上传了新图片，则添加图片信息
@@ -919,6 +936,9 @@ app.put('/api/records/:id', uploadToMemory.array('images', 10), async (req, res)
  *                 text:
  *                   type: string
  *                   example: 这是一张美丽的风景图片
+ *                 title:
+ *                   type: string
+ *                   example: 美丽的风景
  *                 uploadTime:
  *                   type: string
  *                   format: date-time
@@ -1167,23 +1187,5 @@ app.get('/api/records/:id/comments', async (req, res) => {
   }
 });
 
-// 启动服务器
-const server = app.listen(PORT, () => {
-  console.log(`服务器运行在端口 ${PORT}`);
-  console.log(`API文档地址: http://localhost:${PORT}/api-docs`);
-  
-  // 如果没有设置环境变量JWT_SECRET，则使用默认值
-  if (!process.env.JWT_SECRET) {
-    console.log('注意：使用默认JWT密钥，生产环境请设置 JWT_SECRET 环境变量');
-  }
-});
-
-// 优雅关闭服务器
-process.on('SIGINT', () => {
-  console.log('正在关闭服务器...');
-  db.closeDatabase();
-  server.close(() => {
-    console.log('服务器已关闭');
-    process.exit(0);
-  });
-});
+// 导出应用供测试使用
+module.exports = app;
