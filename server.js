@@ -420,7 +420,7 @@ app.post('/api/upload', uploadToMemory.array('images', 10), async (req, res) => 
     const text = req.body.text || '';
     const key = req.body.key;
     const carrier = parseInt(req.body.carrier) || 0; // 默认为可编辑
-    const fantasy = parseInt(req.body.fantasy) || req.files.length; // 默认为上传的图片数量
+    const imageCount = req.files ? req.files.length : 0; // 根据实际上传的图片数量生成fantasy值
 
     // 获取客户端IP地址和User-Agent
     const clientIP = req.connection.remoteAddress || req.socket.remoteAddress || 
@@ -464,7 +464,7 @@ app.post('/api/upload', uploadToMemory.array('images', 10), async (req, res) => 
       fs.writeFileSync(filePath, file.buffer);
     }
 
-    // 创建新记录
+    // 创建新记录，fantasy值根据实际上传的图片数量自动生成
     const record = {
       filename: filename,
       text: text,
@@ -472,7 +472,7 @@ app.post('/api/upload', uploadToMemory.array('images', 10), async (req, res) => 
       fileSize: fileSize,
       uploaderIP: clientIP,
       carrier: carrier,
-      fantasy: fantasy
+      fantasy: imageCount // 根据实际上传的图片数量生成fantasy值
     };
 
     // 保存记录到数据库
@@ -873,13 +873,11 @@ app.put('/api/records/:id', uploadToMemory.array('images', 10), async (req, res)
       updates.text = text;
     }
     
-    if (fantasy !== undefined) {
-      updates.fantasy = parseInt(fantasy);
-    }
-    
     // 如果上传了新图片，则添加图片信息
     if (req.files && req.files.length > 0) {
       updates.images = req.files;
+      // 根据实际上传的图片数量更新fantasy值
+      updates.fantasy = req.files.length;
     }
 
     // 编辑记录
