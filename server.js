@@ -330,10 +330,12 @@ app.get('/api/key', async (req, res) => {
  *           schema:
  *             type: object
  *             properties:
- *               image:
- *                 type: string
- *                 format: binary
- *                 description: 要上传的图片文件
+ *               images:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: 要上传的图片文件数组（支持0张或多张）
  *               text:
  *                 type: string
  *                 description: 图片描述文字
@@ -344,6 +346,10 @@ app.get('/api/key', async (req, res) => {
  *                 type: integer
  *                 description: 类型字段，0表示可编辑，1表示不可编辑
  *                 example: 0
+ *               fantasy:
+ *                 type: integer
+ *                 description: 图片张数记录
+ *                 example: 3
  *     responses:
  *       200:
  *         description: 上传成功
@@ -383,6 +389,9 @@ app.get('/api/key', async (req, res) => {
  *                     carrier:
  *                       type: integer
  *                       example: 0
+ *                     fantasy:
+ *                       type: integer
+ *                       example: 3
  *       400:
  *         description: 秘钥无效或今日已上传过
  *         content:
@@ -521,6 +530,9 @@ app.post('/api/upload', uploadToMemory.array('images', 10), async (req, res) => 
  *                   carrier:
  *                     type: integer
  *                     example: 0
+ *                   fantasy:
+ *                     type: integer
+ *                     example: 3
  *       500:
  *         description: 服务器内部错误
  *         content:
@@ -586,6 +598,9 @@ app.get('/api/records', async (req, res) => {
  *                   carrier:
  *                     type: integer
  *                     example: 0
+ *                   fantasy:
+ *                     type: integer
+ *                     example: 3
  *       401:
  *         description: 未授权访问
  *         content:
@@ -713,7 +728,7 @@ app.post('/api/records/:id/review', requireAdminAuth, async (req, res) => {
       const records = await db.getAllRecords();
       const record = records.find(r => r.id === recordId);
       
-      if (record) {
+      if (record && record.filename) {
         // 删除文件
         const filePath = path.join(uploadDir, record.filename);
         if (fs.existsSync(filePath)) {
@@ -765,10 +780,15 @@ app.post('/api/records/:id/review', requireAdminAuth, async (req, res) => {
  *               text:
  *                 type: string
  *                 description: 新的文字内容（留空表示不更改）
- *               image:
- *                 type: string
- *                 format: binary
- *                 description: 新的图片文件（留空表示不更改）
+ *               images:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: 新的图片文件数组（留空表示不更改，支持0张或多张）
+ *               fantasy:
+ *                 type: integer
+ *                 description: 图片张数记录（留空表示不更改）
  *     responses:
  *       200:
  *         description: 编辑成功
@@ -802,6 +822,9 @@ app.post('/api/records/:id/review', requireAdminAuth, async (req, res) => {
  *                 carrier:
  *                   type: integer
  *                   example: 0
+ *                 fantasy:
+ *                   type: integer
+ *                   example: 3
  *       400:
  *         description: 记录不可编辑或参数错误
  *         content:
@@ -834,10 +857,15 @@ app.post('/api/records/:id/review', requireAdminAuth, async (req, res) => {
  *                   example: 服务器内部错误
  */
 // 编辑记录接口
-app.put('/api/records/:id', uploadToMemory.single('image'), async (req, res) => {
+app.put('/api/records/:id', uploadToMemory.array('images', 10), async (req, res) => {
   try {
     const recordId = req.params.id;
     const { text, fantasy } = req.body;
+
+    // 获取客户端IP地址
+    const clientIP = req.connection.remoteAddress || req.socket.remoteAddress || 
+                    (req.connection.socket ? req.connection.socket.remoteAddress : null) ||
+                    (req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown');
 
     // 构建更新对象
     const updates = {};
@@ -850,13 +878,12 @@ app.put('/api/records/:id', uploadToMemory.single('image'), async (req, res) => 
     }
     
     // 如果上传了新图片，则添加图片信息
-    if (req.file) {
-      updates.imageBuffer = req.file.buffer;
-      updates.originalname = req.file.originalname;
+    if (req.files && req.files.length > 0) {
+      updates.images = req.files;
     }
 
     // 编辑记录
-    const result = await db.editRecord(recordId, updates, uploadDir);
+    const result = await db.editRecord(recordId, updates, uploadDir, clientIP);
 
     // 返回成功响应
     res.status(200).json(result);
@@ -910,6 +937,9 @@ app.put('/api/records/:id', uploadToMemory.single('image'), async (req, res) => 
  *                 carrier:
  *                   type: integer
  *                   example: 0
+ *                 fantasy:
+ *                   type: integer
+ *                   example: 3
  *       404:
  *         description: 没有可用的记录
  *         content:

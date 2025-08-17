@@ -386,7 +386,7 @@ function getApprovedRecords() {
 }
 
 // 编辑记录（仅可编辑的记录）
-function editRecord(id, updates, uploadDir) {
+function editRecord(id, updates, uploadDir, clientIP) {
   return new Promise((resolve, reject) => {
     // 首先检查记录是否存在且可编辑
     const checkSql = `SELECT id, filename, carrier, fantasy FROM records WHERE id = ? AND carrier = 0 AND status = 'approved'`;
@@ -410,30 +410,38 @@ function editRecord(id, updates, uploadDir) {
         params.push(updates.text);
       }
       
-      if (updates.imageBuffer && updates.originalname) {
-        // 处理图片更新
-        const ext = path.extname(updates.originalname);
+      // 处理多图片上传
+      if (updates.images && updates.images.length > 0) {
+        // 删除旧文件
+        if (row.filename) {
+          const oldFilePath = path.join(uploadDir, row.filename);
+          if (fs.existsSync(oldFilePath)) {
+            fs.unlinkSync(oldFilePath);
+          }
+        }
+        
+        // 保存第一张图片作为主文件
+        const file = updates.images[0];
+        const ext = path.extname(file.originalname);
         const timestamp = Date.now();
         const randomSuffix = Math.round(Math.random() * 1E9);
-        const newFilename = `${row.id}-${timestamp}-${randomSuffix}${ext}`;
+        const ipHash = crypto.createHash('md5').update(clientIP).digest('hex');
+        const newFilename = ipHash + '-' + timestamp + '-' + randomSuffix + ext;
         
         updateFields.push('filename = ?');
         updateFields.push('fileSize = ?');
         params.push(newFilename);
-        params.push(updates.imageBuffer.length);
+        params.push(file.size);
         
         // 保存新文件
         const filePath = path.join(uploadDir, newFilename);
-        fs.writeFileSync(filePath, updates.imageBuffer);
+        fs.writeFileSync(filePath, file.buffer);
         
-        // 删除旧文件
-        const oldFilePath = path.join(uploadDir, row.filename);
-        if (fs.existsSync(oldFilePath)) {
-          fs.unlinkSync(oldFilePath);
-        }
-      }
-      
-      if (updates.fantasy !== undefined) {
+        // 更新图片张数
+        updateFields.push('fantasy = ?');
+        params.push(updates.images.length);
+      } else if (updates.fantasy !== undefined) {
+        // 如果只更新fantasy字段
         updateFields.push('fantasy = ?');
         params.push(updates.fantasy);
       }
