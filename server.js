@@ -736,7 +736,7 @@ app.post('/api/records/:id/review', requireAdminAuth, async (req, res) => {
 
 /**
  * @swagger
- * /records/{id}:
+ * /api/records/{id}:
  *   put:
  *     summary: 编辑记录
  *     description: 编辑指定ID的可编辑记录（仅可编辑且已审核通过的记录）
@@ -1144,6 +1144,87 @@ app.get('/api/records/:id/comments', async (req, res) => {
     res.status(200).json(comments);
   } catch (error) {
     console.error('获取评论错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+/**
+ * @swagger
+ * /records/{id}:
+ *   delete:
+ *     summary: 删除指定记录（仅管理员）
+ *     description: 管理员删除指定的记录，包括关联的文件
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: 记录ID
+ *     responses:
+ *       200:
+ *         description: 记录删除成功
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                   example: 1a2b3c4d
+ *                 message:
+ *                   type: string
+ *                   example: 记录删除成功
+ *       401:
+ *         description: 认证失败
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 认证失败
+ *       404:
+ *         description: 记录不存在
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 记录不存在
+ *       500:
+ *         description: 服务器内部错误
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 服务器内部错误
+ */
+// 删除记录接口（仅管理员）
+app.delete('/api/records/:id', requireAdminAuth, async (req, res) => {
+  try {
+    const recordId = req.params.id;
+    
+    // 删除记录
+    const result = await db.deleteRecord(recordId);
+    
+    // 返回成功响应
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('删除记录错误:', error);
+    
+    if (error.message === '记录不存在') {
+      return res.status(404).json({ error: '记录不存在' });
+    }
+    
     res.status(500).json({ error: '服务器内部错误' });
   }
 });

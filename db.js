@@ -629,6 +629,61 @@ function editRecord(id, updates, uploadDir, clientIP) {
   });
 }
 
+// 删除记录（包括关联的文件记录和实际文件）
+function deleteRecord(id) {
+  return new Promise((resolve, reject) => {
+    // 开始事务
+    db.serialize(() => {
+      // 首先获取记录信息，包括所有关联的文件
+      const selectSql = `SELECT filename FROM record_files WHERE recordId = ?`;
+      db.all(selectSql, [id], (err, files) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        
+        // 删除记录关联的文件记录
+        const deleteFilesSql = `DELETE FROM record_files WHERE recordId = ?`;
+        db.run(deleteFilesSql, [id], function(err) {
+          if (err) {
+            reject(err);
+            return;
+          }
+          
+          // 删除记录本身
+          const deleteRecordSql = `DELETE FROM records WHERE id = ?`;
+          db.run(deleteRecordSql, [id], function(err) {
+            if (err) {
+              reject(err);
+              return;
+            }
+            
+            if (this.changes === 0) {
+              reject(new Error('记录不存在'));
+              return;
+            }
+            
+            // 删除实际的文件
+            const uploadDir = path.join(__dirname, 'uploads');
+            files.forEach(file => {
+              const filePath = path.join(uploadDir, file.filename);
+              if (fs.existsSync(filePath)) {
+                try {
+                  fs.unlinkSync(filePath);
+                } catch (error) {
+                  console.error('删除文件失败:', filePath, error);
+                }
+              }
+            });
+            
+            resolve({ id, message: '记录删除成功' });
+          });
+        });
+      });
+    });
+  });
+}
+
 // 添加评论
 function addComment(recordId, comment) {
   return new Promise((resolve, reject) => {
@@ -746,6 +801,8 @@ module.exports = {
   getRandomRecord,
   getApprovedRecords,
   editRecord,
+  deleteRecord,
+  deleteRecord,  // 添加删除记录函数
   addComment,
   getCommentsByRecordId,
   getRecordFiles,  // 导出新函数
