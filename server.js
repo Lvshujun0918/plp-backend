@@ -379,9 +379,6 @@ app.get('/api/key', async (req, res) => {
  *                       type: string
  *                       format: date-time
  *                       example: 2023-09-20T10:30:00.000Z
- *                     fileSize:
- *                       type: integer
- *                       example: 102400
  *                     uploaderIP:
  *                       type: string
  *                       example: ::1
@@ -449,7 +446,6 @@ app.post('/api/upload', uploadToMemory.array('images', 10), async (req, res) => 
       text: text,
       title: title, // 添加标题
       uploadTime: new Date().toISOString(),
-      fileSize: fileSize,
       uploaderIP: clientIP,
       carrier: carrier,
       fantasy: imageCount, // 根据实际上传的图片数量生成fantasy值
@@ -502,9 +498,6 @@ app.post('/api/upload', uploadToMemory.array('images', 10), async (req, res) => 
  *                     type: string
  *                     format: date-time
  *                     example: 2023-09-20T10:30:00.000Z
- *                   fileSize:
- *                     type: integer
- *                     example: 102400
  *                   uploaderIP:
  *                     type: string
  *                     example: ::1
@@ -573,9 +566,6 @@ app.get('/api/records', async (req, res) => {
  *                     type: string
  *                     format: date-time
  *                     example: 2023-09-20T10:30:00.000Z
- *                   fileSize:
- *                     type: integer
- *                     example: 102400
  *                   uploaderIP:
  *                     type: string
  *                     example: ::1
@@ -800,9 +790,6 @@ app.post('/api/records/:id/review', requireAdminAuth, async (req, res) => {
  *                   type: string
  *                   format: date-time
  *                   example: 2023-09-20T10:30:00.000Z
- *                 fileSize:
- *                   type: integer
- *                   example: 102400
  *                 uploaderIP:
  *                   type: string
  *                   example: ::1
@@ -920,9 +907,6 @@ app.put('/api/records/:id', uploadToMemory.array('images', 10), async (req, res)
  *                   type: string
  *                   format: date-time
  *                   example: 2023-09-20T10:30:00.000Z
- *                 fileSize:
- *                   type: integer
- *                   example: 102400
  *                 uploaderIP:
  *                   type: string
  *                   example: ::1

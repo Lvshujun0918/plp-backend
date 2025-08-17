@@ -28,7 +28,6 @@ function initializeDatabase() {
       text TEXT,
       title TEXT,
       uploadTime TEXT NOT NULL,
-      fileSize INTEGER,
       uploaderIP TEXT,
       status TEXT DEFAULT 'pending',
       carrier INTEGER DEFAULT 0,
@@ -46,7 +45,6 @@ function initializeDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       recordId TEXT NOT NULL,  -- 关联到记录表
       filename TEXT NOT NULL,  -- 图片文件名
-      isMain INTEGER DEFAULT 0,  -- 是否为主图(0-否,1-是)
       FOREIGN KEY (recordId) REFERENCES records (id)
     )`, (err) => {
       if (err) {
@@ -261,14 +259,13 @@ function saveRecord(record) {
     // 为记录生成唯一ID
     const uniqueId = generateUniqueId();
     
-    const sql = `INSERT INTO records(id, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy)
-                 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO records(id, text, title, uploadTime, uploaderIP, status, carrier, fantasy)
+                 VALUES(?, ?, ?, ?, ?, ?, ?, ?)`;
     const params = [
       uniqueId,
       record.text,
       record.title || '', // 添加title字段
       record.uploadTime,
-      record.fileSize,
       record.uploaderIP,
       'pending', // 默认状态为待审核
       record.carrier || 0, // 默认为可编辑
@@ -321,7 +318,6 @@ function saveRecord(record) {
           text: record.text,
           title: record.title || '', // 添加title字段
           uploadTime: record.uploadTime,
-          fileSize: record.fileSize,
           uploaderIP: record.uploaderIP,
           status: 'pending',
           carrier: record.carrier || 0,
@@ -336,7 +332,7 @@ function saveRecord(record) {
 // 获取所有记录
 function getAllRecords() {
   return new Promise((resolve, reject) => {
-    const sql = `SELECT id, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy FROM records`;
+    const sql = `SELECT id, text, title, uploadTime, uploaderIP, status, carrier, fantasy FROM records`;
 
     db.all(sql, [], (err, rows) => {
       if (err) {
@@ -365,7 +361,7 @@ function getAllRecords() {
 // 获取所有待审核记录
 function getPendingRecords() {
   return new Promise((resolve, reject) => {
-    const sql = `SELECT id, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy FROM records WHERE status = 'pending'`;
+    const sql = `SELECT id, text, title, uploadTime, uploaderIP, status, carrier, fantasy FROM records WHERE status = 'pending'`;
 
     db.all(sql, [], (err, rows) => {
       if (err) {
@@ -437,7 +433,7 @@ function getRandomRecord() {
       const randomOffset = Math.floor(Math.random() * count);
 
       // 获取随机记录
-      const sql = `SELECT id, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy
+      const sql = `SELECT id, text, title, uploadTime, uploaderIP, status, carrier, fantasy
                    FROM records WHERE status = 'approved' LIMIT 1 OFFSET ?`;
       
       db.get(sql, [randomOffset], (err, row) => {
@@ -462,7 +458,7 @@ function getRandomRecord() {
 // 获取已审核通过的记录
 function getApprovedRecords() {
   return new Promise((resolve, reject) => {
-    const sql = `SELECT id, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy FROM records WHERE status = 'approved'`;
+    const sql = `SELECT id, text, title, uploadTime, uploaderIP, status, carrier, fantasy FROM records WHERE status = 'approved'`;
 
     db.all(sql, [], (err, rows) => {
       if (err) {
@@ -492,7 +488,7 @@ function getApprovedRecords() {
 function editRecord(id, updates, uploadDir, clientIP) {
   return new Promise((resolve, reject) => {
     // 首先检查记录是否存在且可编辑
-    const checkSql = `SELECT id, filename, carrier, fantasy FROM records WHERE id = ? AND carrier = 0 AND status = 'approved'`;
+    const checkSql = `SELECT id, carrier, fantasy FROM records WHERE id = ? AND carrier = 0 AND status = 'approved'`;
     db.get(checkSql, [id], (err, row) => {
       if (err) {
         reject(err);
@@ -520,43 +516,18 @@ function editRecord(id, updates, uploadDir, clientIP) {
       
       // 处理多图片上传
       if (updates.images && updates.images.length > 0) {
-        // 删除旧文件
-        if (row.filename) {
-          const oldFilePath = path.join(uploadDir, row.filename);
-          if (fs.existsSync(oldFilePath)) {
-            fs.unlinkSync(oldFilePath);
+        // 删除旧的关联文件记录
+        const deleteSql = `DELETE FROM record_files WHERE recordId = ?`;
+        db.run(deleteSql, [id], (err) => {
+          if (err) {
+            console.error('删除旧关联文件记录失败:', err.message);
           }
-          
-          // 删除旧的关联文件记录
-          const deleteSql = `DELETE FROM record_files WHERE recordId = ?`;
-          db.run(deleteSql, [id], (err) => {
-            if (err) {
-              console.error('删除旧关联文件记录失败:', err.message);
-            }
-          });
-        }
+        });
         
         // 确保上传目录存在
         if (!fs.existsSync(uploadDir)) {
           fs.mkdirSync(uploadDir, { recursive: true });
         }
-        
-        // 保存第一张图片作为主文件
-        const file = updates.images[0];
-        const ext = path.extname(file.originalname);
-        const timestamp = Date.now();
-        const randomSuffix = Math.round(Math.random() * 1E9);
-        const ipHash = crypto.createHash('md5').update(clientIP).digest('hex');
-        const newFilename = ipHash + '-' + timestamp + '-' + randomSuffix + ext;
-        
-        updateFields.push('filename = ?');
-        updateFields.push('fileSize = ?');
-        params.push(newFilename);
-        params.push(file.size);
-        
-        // 保存新文件
-        const filePath = path.join(uploadDir, newFilename);
-        fs.writeFileSync(filePath, file.buffer);
         
         // 更新图片张数
         updateFields.push('fantasy = ?');
@@ -569,7 +540,6 @@ function editRecord(id, updates, uploadDir, clientIP) {
           const timestamp = Date.now();
           const randomSuffix = Math.round(Math.random() * 1E9);
           const ipHash = crypto.createHash('md5').update(clientIP).digest('hex');
-          const isMain = index === 0 ? 1 : 0;
           const newFilename = ipHash + '-' + timestamp + '-' + randomSuffix + ext;
           
           // 保存文件名用于返回
@@ -586,8 +556,8 @@ function editRecord(id, updates, uploadDir, clientIP) {
           fs.writeFileSync(filePath, file.buffer);
           
           // 插入文件记录
-          const sql = `INSERT INTO record_files(recordId, filename, isMain) VALUES(?, ?, ?)`;
-          const params = [id, newFilename, isMain];
+          const sql = `INSERT INTO record_files(recordId, filename) VALUES(?, ?)`;
+          const params = [id, newFilename];
           
           db.run(sql, params, function(err) {
             if (err) {
@@ -595,9 +565,6 @@ function editRecord(id, updates, uploadDir, clientIP) {
             }
           });
         });
-        
-        // 将保存的文件名存储在闭包中，供后续查询使用
-        savedFilenamesForThisRecord = savedFilenames;
       } else if (updates.fantasy !== undefined) {
         // 如果只更新fantasy字段
         updateFields.push('fantasy = ?');
@@ -607,7 +574,7 @@ function editRecord(id, updates, uploadDir, clientIP) {
       // 如果没有任何更新字段，则直接返回
       if (updateFields.length === 0) {
         // 重新查询完整记录
-        const selectSql = `SELECT id, filename, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy FROM records WHERE id = ?`;
+        const selectSql = `SELECT id, text, title, uploadTime, uploaderIP, status, carrier, fantasy FROM records WHERE id = ?`;
         db.get(selectSql, [id], (err, row) => {
           if (err) {
             reject(err);
@@ -639,7 +606,7 @@ function editRecord(id, updates, uploadDir, clientIP) {
             reject(new Error('记录更新失败'));
           } else {
             // 查询更新后的记录并获取所有文件名
-            const selectSql = `SELECT id, filename, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy FROM records WHERE id = ?`;
+            const selectSql = `SELECT id, text, title, uploadTime, uploaderIP, status, carrier, fantasy FROM records WHERE id = ?`;
             db.get(selectSql, [id], (err, row) => {
               if (err) {
                 reject(err);
