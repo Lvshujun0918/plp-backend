@@ -405,17 +405,13 @@ app.get('/api/key', async (req, res) => {
  *                   example: 服务器内部错误
  */
 // 上传图片并记录文字的接口
-app.post('/api/upload', uploadToMemory.single('image'), async (req, res) => {
+app.post('/api/upload', uploadToMemory.array('images', 10), async (req, res) => {
   try {
-    // 检查是否上传了文件
-    if (!req.file) {
-      return res.status(400).json({ error: '没有上传文件' });
-    }
-
     // 获取文字信息和秘钥
     const text = req.body.text || '';
     const key = req.body.key;
     const carrier = parseInt(req.body.carrier) || 0; // 默认为可编辑
+    const fantasy = parseInt(req.body.fantasy) || req.files.length; // 默认为上传的图片数量
 
     // 获取客户端IP地址和User-Agent
     const clientIP = req.connection.remoteAddress || req.socket.remoteAddress || 
@@ -436,29 +432,42 @@ app.post('/api/upload', uploadToMemory.single('image'), async (req, res) => {
     // 标记秘钥为已使用
     await db.markKeyAsUsed(key);
 
-    // 生成文件名
-    const ipHash = crypto.createHash('md5').update(clientIP).digest('hex');
-    const timestamp = Date.now();
-    const randomSuffix = Math.round(Math.random() * 1E9);
-    const ext = path.extname(req.file.originalname);
-    const filename = ipHash + '-' + timestamp + '-' + randomSuffix + ext;
+    // 处理文件上传
+    let filename = '';
+    let fileSize = 0;
+    
+    // 如果有上传文件，处理第一个文件作为主文件
+    if (req.files && req.files.length > 0) {
+      const file = req.files[0];
+      
+      // 生成文件名
+      const ipHash = crypto.createHash('md5').update(clientIP).digest('hex');
+      const timestamp = Date.now();
+      const randomSuffix = Math.round(Math.random() * 1E9);
+      const ext = path.extname(file.originalname);
+      filename = ipHash + '-' + timestamp + '-' + randomSuffix + ext;
+      
+      // 设置文件大小
+      fileSize = file.size;
+      
+      // 将文件写入磁盘
+      const filePath = path.join(uploadDir, filename);
+      fs.writeFileSync(filePath, file.buffer);
+    }
 
-    // 创建新记录（已去除originalname字段，ID由数据库模块生成）
+    // 创建新记录
     const record = {
       filename: filename,
       text: text,
       uploadTime: new Date().toISOString(),
-      fileSize: req.file.size,
+      fileSize: fileSize,
       uploaderIP: clientIP,
-      carrier: carrier
+      carrier: carrier,
+      fantasy: fantasy
     };
 
     // 保存记录到数据库
     const savedRecord = await db.saveRecord(record);
-
-    // 将文件写入磁盘
-    const filePath = path.join(uploadDir, filename);
-    fs.writeFileSync(filePath, req.file.buffer);
 
     // 返回成功响应
     res.status(200).json({
@@ -828,12 +837,16 @@ app.post('/api/records/:id/review', requireAdminAuth, async (req, res) => {
 app.put('/api/records/:id', uploadToMemory.single('image'), async (req, res) => {
   try {
     const recordId = req.params.id;
-    const { text } = req.body;
+    const { text, fantasy } = req.body;
 
     // 构建更新对象
     const updates = {};
     if (text !== undefined) {
       updates.text = text;
+    }
+    
+    if (fantasy !== undefined) {
+      updates.fantasy = parseInt(fantasy);
     }
     
     // 如果上传了新图片，则添加图片信息
