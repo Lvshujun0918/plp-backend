@@ -461,10 +461,6 @@ app.post('/api/upload', uploadToMemory.array('images', 10), async (req, res) => 
       
       // 设置文件大小
       fileSize = file.size;
-      
-      // 将文件写入磁盘
-      const filePath = path.join(uploadDir, filename);
-      fs.writeFileSync(filePath, file.buffer);
     }
 
     // 创建新记录，fantasy值根据实际上传的图片数量自动生成
@@ -476,7 +472,8 @@ app.post('/api/upload', uploadToMemory.array('images', 10), async (req, res) => 
       fileSize: fileSize,
       uploaderIP: clientIP,
       carrier: carrier,
-      fantasy: imageCount // 根据实际上传的图片数量生成fantasy值
+      fantasy: imageCount, // 根据实际上传的图片数量生成fantasy值
+      files: req.files // 传递所有文件
     };
 
     // 保存记录到数据库
@@ -1187,5 +1184,25 @@ app.get('/api/records/:id/comments', async (req, res) => {
   }
 });
 
-// 导出应用供测试使用
+// 启动服务器
+const server = app.listen(PORT, () => {
+  console.log(`服务器运行在端口 ${PORT}`);
+  console.log(`API文档地址: http://localhost:${PORT}/api-docs`);
+  
+  // 如果没有设置环境变量JWT_SECRET，则使用默认值
+  if (!process.env.JWT_SECRET) {
+    console.log('注意：使用默认JWT密钥，生产环境请设置 JWT_SECRET 环境变量');
+  }
+});
+
+// 优雅关闭服务器
+process.on('SIGINT', () => {
+  console.log('正在关闭服务器...');
+  db.closeDatabase();
+  server.close(() => {
+    console.log('服务器已关闭');
+    process.exit(0);
+  });
+});
+
 module.exports = app;

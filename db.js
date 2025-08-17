@@ -25,7 +25,7 @@ function initializeDatabase() {
     // 创建记录表（添加status字段，默认为'pending'，添加carrier字段，默认为0-可编辑，添加fantasy字段记录图片张数，添加title字段）
     db.run(`CREATE TABLE IF NOT EXISTS records (
       id TEXT PRIMARY KEY,
-      filename TEXT NOT NULL,
+      filename TEXT NOT NULL,  -- 主文件名
       text TEXT,
       title TEXT,
       uploadTime TEXT NOT NULL,
@@ -33,12 +33,27 @@ function initializeDatabase() {
       uploaderIP TEXT,
       status TEXT DEFAULT 'pending',
       carrier INTEGER DEFAULT 0,
-      fantasy INTEGER DEFAULT 0
+      fantasy INTEGER DEFAULT 0  -- 记录图片张数
     )`, (err) => {
       if (err) {
         console.error('创建记录表失败:', err.message);
       } else {
         console.log('记录表已准备就绪');
+      }
+    });
+
+    // 创建记录文件表用于存储多张图片文件名
+    db.run(`CREATE TABLE IF NOT EXISTS record_files (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recordId TEXT NOT NULL,  -- 关联到记录表
+      filename TEXT NOT NULL,  -- 图片文件名
+      isMain INTEGER DEFAULT 0,  -- 是否为主图(0-否,1-是)
+      FOREIGN KEY (recordId) REFERENCES records (id)
+    )`, (err) => {
+      if (err) {
+        console.error('创建记录文件表失败:', err.message);
+      } else {
+        console.log('记录文件表已准备就绪');
       }
     });
 
@@ -266,6 +281,32 @@ function saveRecord(record) {
       if (err) {
         reject(err);
       } else {
+        // 如果有多个文件，保存到record_files表
+        if (record.files && record.files.length > 0) {
+          record.files.forEach((file, index) => {
+            const ext = path.extname(file.originalname);
+            const timestamp = Date.now();
+            const randomSuffix = Math.round(Math.random() * 1E9);
+            const ipHash = crypto.createHash('md5').update(record.uploaderIP).digest('hex');
+            const isMain = index === 0 ? 1 : 0;
+            const newFilename = ipHash + '-' + timestamp + '-' + randomSuffix + ext;
+            
+            // 保存文件
+            const filePath = path.join(__dirname, '..', 'uploads', newFilename);
+            fs.writeFileSync(filePath, file.buffer);
+            
+            // 插入文件记录
+            const sql = `INSERT INTO record_files(recordId, filename, isMain) VALUES(?, ?, ?)`;
+            const params = [uniqueId, newFilename, isMain];
+            
+            db.run(sql, params, function(err) {
+              if (err) {
+                console.error('保存文件记录失败:', err.message);
+              }
+            });
+          });
+        }
+        
         resolve({
           id: uniqueId,
           filename: record.filename,
@@ -276,7 +317,14 @@ function saveRecord(record) {
           uploaderIP: record.uploaderIP,
           status: 'pending',
           carrier: record.carrier || 0,
-          fantasy: record.fantasy || 0
+          fantasy: record.fantasy || 0,
+          filenames: record.files ? record.files.map((file, index) => {
+            const ext = path.extname(file.originalname);
+            const timestamp = Date.now();
+            const randomSuffix = Math.round(Math.random() * 1E9);
+            const ipHash = crypto.createHash('md5').update(record.uploaderIP).digest('hex');
+            return ipHash + '-' + timestamp + '-' + randomSuffix + ext;
+          }) : [] // 添加所有文件名
         });
       }
     });
@@ -292,7 +340,21 @@ function getAllRecords() {
       if (err) {
         reject(err);
       } else {
-        resolve(rows);
+        // 为每个记录获取所有文件名
+        const promises = rows.map(row => {
+          return getRecordFiles(row.id).then(filenames => {
+            return {
+              ...row,
+              filenames: filenames // 添加所有文件名
+            };
+          });
+        });
+        
+        Promise.all(promises).then(recordsWithFiles => {
+          resolve(recordsWithFiles);
+        }).catch(err => {
+          reject(err);
+        });
       }
     });
   });
@@ -307,7 +369,21 @@ function getPendingRecords() {
       if (err) {
         reject(err);
       } else {
-        resolve(rows);
+        // 为每个记录获取所有文件名
+        const promises = rows.map(row => {
+          return getRecordFiles(row.id).then(filenames => {
+            return {
+              ...row,
+              filenames: filenames // 添加所有文件名
+            };
+          });
+        });
+        
+        Promise.all(promises).then(recordsWithFiles => {
+          resolve(recordsWithFiles);
+        }).catch(err => {
+          reject(err);
+        });
       }
     });
   });
@@ -366,7 +442,15 @@ function getRandomRecord() {
         if (err) {
           reject(err);
         } else {
-          resolve(row);
+          // 获取记录的所有文件名
+          getRecordFiles(row.id).then(filenames => {
+            resolve({
+              ...row,
+              filenames: filenames // 添加所有文件名
+            });
+          }).catch(err => {
+            reject(err);
+          });
         }
       });
     });
@@ -382,7 +466,21 @@ function getApprovedRecords() {
       if (err) {
         reject(err);
       } else {
-        resolve(rows);
+        // 为每个记录获取所有文件名
+        const promises = rows.map(row => {
+          return getRecordFiles(row.id).then(filenames => {
+            return {
+              ...row,
+              filenames: filenames // 添加所有文件名
+            };
+          });
+        });
+        
+        Promise.all(promises).then(recordsWithFiles => {
+          resolve(recordsWithFiles);
+        }).catch(err => {
+          reject(err);
+        });
       }
     });
   });
@@ -426,6 +524,14 @@ function editRecord(id, updates, uploadDir, clientIP) {
           if (fs.existsSync(oldFilePath)) {
             fs.unlinkSync(oldFilePath);
           }
+          
+          // 删除旧的关联文件记录
+          const deleteSql = `DELETE FROM record_files WHERE recordId = ?`;
+          db.run(deleteSql, [id], (err) => {
+            if (err) {
+              console.error('删除旧关联文件记录失败:', err.message);
+            }
+          });
         }
         
         // 保存第一张图片作为主文件
@@ -448,6 +554,30 @@ function editRecord(id, updates, uploadDir, clientIP) {
         // 更新图片张数
         updateFields.push('fantasy = ?');
         params.push(updates.images.length);
+        
+        // 保存其他图片
+        updates.images.forEach((file, index) => {
+          const ext = path.extname(file.originalname);
+          const timestamp = Date.now();
+          const randomSuffix = Math.round(Math.random() * 1E9);
+          const ipHash = crypto.createHash('md5').update(clientIP).digest('hex');
+          const isMain = index === 0 ? 1 : 0;
+          const newFilename = ipHash + '-' + timestamp + '-' + randomSuffix + ext;
+          
+          // 保存文件
+          const filePath = path.join(uploadDir, newFilename);
+          fs.writeFileSync(filePath, file.buffer);
+          
+          // 插入文件记录
+          const sql = `INSERT INTO record_files(recordId, filename, isMain) VALUES(?, ?, ?)`;
+          const params = [id, newFilename, isMain];
+          
+          db.run(sql, params, function(err) {
+            if (err) {
+              console.error('保存文件记录失败:', err.message);
+            }
+          });
+        });
       } else if (updates.fantasy !== undefined) {
         // 如果只更新fantasy字段
         updateFields.push('fantasy = ?');
@@ -462,7 +592,15 @@ function editRecord(id, updates, uploadDir, clientIP) {
           if (err) {
             reject(err);
           } else {
-            resolve(row);
+            // 获取记录的所有文件名
+            getRecordFiles(row.id).then(filenames => {
+              resolve({
+                ...row,
+                filenames: filenames // 添加所有文件名
+              });
+            }).catch(err => {
+              reject(err);
+            });
           }
         });
         return;
@@ -480,13 +618,21 @@ function editRecord(id, updates, uploadDir, clientIP) {
           if (this.changes === 0) {
             reject(new Error('记录更新失败'));
           } else {
-            // 查询更新后的记录
+            // 查询更新后的记录并获取所有文件名
             const selectSql = `SELECT id, filename, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy FROM records WHERE id = ?`;
             db.get(selectSql, [id], (err, row) => {
               if (err) {
                 reject(err);
               } else {
-                resolve(row);
+                // 获取记录的所有文件名
+                getRecordFiles(row.id).then(filenames => {
+                  resolve({
+                    ...row,
+                    filenames: filenames // 添加所有文件名
+                  });
+                }).catch(err => {
+                  reject(err);
+                });
               }
             });
           }
@@ -560,6 +706,21 @@ function getCommentsByRecordId(recordId) {
   });
 }
 
+// 获取记录的所有文件
+function getRecordFiles(recordId) {
+  return new Promise((resolve, reject) => {
+    const sql = `SELECT filename FROM record_files WHERE recordId = ? ORDER BY isMain DESC`;
+    
+    db.all(sql, [recordId], (err, rows) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(rows.map(row => row.filename));
+      }
+    });
+  });
+}
+
 // 关闭数据库连接
 function closeDatabase() {
   if (db) {
@@ -600,5 +761,6 @@ module.exports = {
   editRecord,
   addComment,
   getCommentsByRecordId,
+  getRecordFiles,  // 导出新函数
   closeDatabase
 };
