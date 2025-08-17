@@ -444,28 +444,8 @@ app.post('/api/upload', uploadToMemory.array('images', 10), async (req, res) => 
     // 标记秘钥为已使用
     await db.markKeyAsUsed(key);
 
-    // 处理文件上传
-    let filename = '';
-    let fileSize = 0;
-    
-    // 如果有上传文件，处理第一个文件作为主文件
-    if (req.files && req.files.length > 0) {
-      const file = req.files[0];
-      
-      // 生成文件名
-      const ipHash = crypto.createHash('md5').update(clientIP).digest('hex');
-      const timestamp = Date.now();
-      const randomSuffix = Math.round(Math.random() * 1E9);
-      const ext = path.extname(file.originalname);
-      filename = ipHash + '-' + timestamp + '-' + randomSuffix + ext;
-      
-      // 设置文件大小
-      fileSize = file.size;
-    }
-
     // 创建新记录，fantasy值根据实际上传的图片数量自动生成
     const record = {
-      filename: filename,
       text: text,
       title: title, // 添加标题
       uploadTime: new Date().toISOString(),

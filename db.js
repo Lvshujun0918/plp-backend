@@ -25,7 +25,6 @@ function initializeDatabase() {
     // 创建记录表（添加status字段，默认为'pending'，添加carrier字段，默认为0-可编辑，添加fantasy字段记录图片张数，添加title字段）
     db.run(`CREATE TABLE IF NOT EXISTS records (
       id TEXT PRIMARY KEY,
-      filename TEXT NOT NULL,  -- 主文件名
       text TEXT,
       title TEXT,
       uploadTime TEXT NOT NULL,
@@ -262,11 +261,10 @@ function saveRecord(record) {
     // 为记录生成唯一ID
     const uniqueId = generateUniqueId();
     
-    const sql = `INSERT INTO records(id, filename, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy)
-                 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO records(id, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy)
+                 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const params = [
       uniqueId,
-      record.filename,
       record.text,
       record.title || '', // 添加title字段
       record.uploadTime,
@@ -281,6 +279,9 @@ function saveRecord(record) {
       if (err) {
         reject(err);
       } else {
+        // 用于存储实际保存的文件名
+        const savedFilenames = [];
+        
         // 如果有多个文件，保存到record_files表
         if (record.files && record.files.length > 0) {
           record.files.forEach((file, index) => {
@@ -288,16 +289,24 @@ function saveRecord(record) {
             const timestamp = Date.now();
             const randomSuffix = Math.round(Math.random() * 1E9);
             const ipHash = crypto.createHash('md5').update(record.uploaderIP).digest('hex');
-            const isMain = index === 0 ? 1 : 0;
             const newFilename = ipHash + '-' + timestamp + '-' + randomSuffix + ext;
             
+            // 保存文件名用于返回
+            savedFilenames.push(newFilename);
+            
+            // 使用与server.js中相同的上传目录路径
+            const uploadDir = path.join(__dirname, 'uploads');
+            if (!fs.existsSync(uploadDir)) {
+              fs.mkdirSync(uploadDir, { recursive: true });
+            }
+            
             // 保存文件
-            const filePath = path.join(__dirname, '..', 'uploads', newFilename);
+            const filePath = path.join(uploadDir, newFilename);
             fs.writeFileSync(filePath, file.buffer);
             
             // 插入文件记录
-            const sql = `INSERT INTO record_files(recordId, filename, isMain) VALUES(?, ?, ?)`;
-            const params = [uniqueId, newFilename, isMain];
+            const sql = `INSERT INTO record_files(recordId, filename) VALUES(?, ?)`;
+            const params = [uniqueId, newFilename];
             
             db.run(sql, params, function(err) {
               if (err) {
@@ -309,7 +318,6 @@ function saveRecord(record) {
         
         resolve({
           id: uniqueId,
-          filename: record.filename,
           text: record.text,
           title: record.title || '', // 添加title字段
           uploadTime: record.uploadTime,
@@ -318,13 +326,7 @@ function saveRecord(record) {
           status: 'pending',
           carrier: record.carrier || 0,
           fantasy: record.fantasy || 0,
-          filenames: record.files ? record.files.map((file, index) => {
-            const ext = path.extname(file.originalname);
-            const timestamp = Date.now();
-            const randomSuffix = Math.round(Math.random() * 1E9);
-            const ipHash = crypto.createHash('md5').update(record.uploaderIP).digest('hex');
-            return ipHash + '-' + timestamp + '-' + randomSuffix + ext;
-          }) : [] // 添加所有文件名
+          filenames: savedFilenames // 使用实际保存的文件名
         });
       }
     });
@@ -334,7 +336,7 @@ function saveRecord(record) {
 // 获取所有记录
 function getAllRecords() {
   return new Promise((resolve, reject) => {
-    const sql = `SELECT id, filename, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy FROM records`;
+    const sql = `SELECT id, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy FROM records`;
 
     db.all(sql, [], (err, rows) => {
       if (err) {
@@ -363,7 +365,7 @@ function getAllRecords() {
 // 获取所有待审核记录
 function getPendingRecords() {
   return new Promise((resolve, reject) => {
-    const sql = `SELECT id, filename, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy FROM records WHERE status = 'pending'`;
+    const sql = `SELECT id, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy FROM records WHERE status = 'pending'`;
 
     db.all(sql, [], (err, rows) => {
       if (err) {
@@ -435,7 +437,7 @@ function getRandomRecord() {
       const randomOffset = Math.floor(Math.random() * count);
 
       // 获取随机记录
-      const sql = `SELECT id, filename, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy
+      const sql = `SELECT id, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy
                    FROM records WHERE status = 'approved' LIMIT 1 OFFSET ?`;
       
       db.get(sql, [randomOffset], (err, row) => {
@@ -460,7 +462,7 @@ function getRandomRecord() {
 // 获取已审核通过的记录
 function getApprovedRecords() {
   return new Promise((resolve, reject) => {
-    const sql = `SELECT id, filename, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy FROM records WHERE status = 'approved'`;
+    const sql = `SELECT id, text, title, uploadTime, fileSize, uploaderIP, status, carrier, fantasy FROM records WHERE status = 'approved'`;
 
     db.all(sql, [], (err, rows) => {
       if (err) {
@@ -534,6 +536,11 @@ function editRecord(id, updates, uploadDir, clientIP) {
           });
         }
         
+        // 确保上传目录存在
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        
         // 保存第一张图片作为主文件
         const file = updates.images[0];
         const ext = path.extname(file.originalname);
@@ -556,6 +563,7 @@ function editRecord(id, updates, uploadDir, clientIP) {
         params.push(updates.images.length);
         
         // 保存其他图片
+        const savedFilenames = []; // 用于存储实际保存的文件名
         updates.images.forEach((file, index) => {
           const ext = path.extname(file.originalname);
           const timestamp = Date.now();
@@ -563,6 +571,15 @@ function editRecord(id, updates, uploadDir, clientIP) {
           const ipHash = crypto.createHash('md5').update(clientIP).digest('hex');
           const isMain = index === 0 ? 1 : 0;
           const newFilename = ipHash + '-' + timestamp + '-' + randomSuffix + ext;
+          
+          // 保存文件名用于返回
+          savedFilenames.push(newFilename);
+          
+          // 使用与server.js中相同的上传目录路径
+          const uploadDir = path.join(__dirname, 'uploads');
+          if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+          }
           
           // 保存文件
           const filePath = path.join(uploadDir, newFilename);
@@ -578,6 +595,9 @@ function editRecord(id, updates, uploadDir, clientIP) {
             }
           });
         });
+        
+        // 将保存的文件名存储在闭包中，供后续查询使用
+        savedFilenamesForThisRecord = savedFilenames;
       } else if (updates.fantasy !== undefined) {
         // 如果只更新fantasy字段
         updateFields.push('fantasy = ?');
@@ -709,7 +729,7 @@ function getCommentsByRecordId(recordId) {
 // 获取记录的所有文件
 function getRecordFiles(recordId) {
   return new Promise((resolve, reject) => {
-    const sql = `SELECT filename FROM record_files WHERE recordId = ? ORDER BY isMain DESC`;
+    const sql = `SELECT filename FROM record_files WHERE recordId = ?`;
     
     db.all(sql, [recordId], (err, rows) => {
       if (err) {
