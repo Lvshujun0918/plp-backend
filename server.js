@@ -1104,7 +1104,7 @@ app.post('/api/records/:id/comments', async (req, res) => {
  * /records/{id}/comments:
  *   get:
  *     summary: 获取指定记录的所有评论
- *     description: 获取指定图片记录的所有评论
+ *     description: 获取指定图片记录的所有已审核通过的评论
  *     parameters:
  *       - in: path
  *         name: id
@@ -1114,7 +1114,7 @@ app.post('/api/records/:id/comments', async (req, res) => {
  *           type: string
  *     responses:
  *       200:
- *         description: 成功获取评论
+ *         description: 成功获取已审核通过的评论
  *         content:
  *           application/json:
  *             schema:
@@ -1154,12 +1154,187 @@ app.get('/api/records/:id/comments', async (req, res) => {
   try {
     const recordId = req.params.id;
     
-    // 获取评论
+    // 获取评论（只返回已审核通过的评论）
     const comments = await db.getCommentsByRecordId(recordId);
     
     res.status(200).json(comments);
   } catch (error) {
     console.error('获取评论错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/comments/pending:
+ *   get:
+ *     summary: 获取所有待审核评论（仅管理员）
+ *     description: 获取所有待审核的评论列表
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: 成功获取待审核评论列表
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                     example: comment-1a2b3c4d
+ *                   recordId:
+ *                     type: string
+ *                     example: 1a2b3c4d
+ *                   content:
+ *                     type: string
+ *                     example: 这张图片真的很美！
+ *                   commenterIP:
+ *                     type: string
+ *                     example: ::1
+ *                   commentTime:
+ *                     type: string
+ *                     format: date-time
+ *                     example: 2023-09-20T11:00:00.000Z
+ *       401:
+ *         description: 认证失败
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 认证失败
+ *       500:
+ *         description: 服务器内部错误
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 服务器内部错误
+ */
+// 获取所有待审核评论接口（仅管理员）
+app.get('/api/comments/pending', requireAdminAuth, async (req, res) => {
+  try {
+    const pendingComments = await db.getPendingComments();
+    res.status(200).json(pendingComments);
+  } catch (error) {
+    console.error('获取待审核评论错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/comments/{id}/review:
+ *   post:
+ *     summary: 审核评论（仅管理员）
+ *     description: 审核指定ID的评论，可设置为通过或拒绝
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: 评论ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 description: 审核状态，可选值为approved（通过）或rejected（拒绝）
+ *                 enum: [approved, rejected]
+ *             required:
+ *               - status
+ *     responses:
+ *       200:
+ *         description: 评论审核成功
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                   example: comment-1a2b3c4d
+ *                 status:
+ *                   type: string
+ *                   example: approved
+ *       400:
+ *         description: 参数错误
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 无效的审核状态
+ *       401:
+ *         description: 认证失败
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 认证失败
+ *       404:
+ *         description: 评论不存在
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 评论不存在
+ *       500:
+ *         description: 服务器内部错误
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 服务器内部错误
+ */
+// 审核评论接口（仅管理员）
+app.post('/api/comments/:id/review', requireAdminAuth, async (req, res) => {
+  try {
+    const commentId = req.params.id;
+    const { status } = req.body;
+    
+    // 审核评论
+    const result = await db.reviewComment(commentId, status);
+    
+    // 返回成功响应
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('审核评论错误:', error);
+    
+    if (error.message === '无效的审核状态') {
+      return res.status(400).json({ error: '无效的审核状态' });
+    }
+    
+    if (error.message === '评论不存在') {
+      return res.status(404).json({ error: '评论不存在' });
+    }
+    
     res.status(500).json({ error: '服务器内部错误' });
   }
 });

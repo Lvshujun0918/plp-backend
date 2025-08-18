@@ -54,13 +54,14 @@ function initializeDatabase() {
       }
     });
 
-    // 创建评论表
+    // 创建评论表（添加status字段，默认为'pending'）
     db.run(`CREATE TABLE IF NOT EXISTS comments (
       id TEXT PRIMARY KEY,
       recordId TEXT NOT NULL,
       content TEXT NOT NULL,
       commenterIP TEXT,
       commentTime TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',  -- 添加评论状态，默认为待审核
       FOREIGN KEY (recordId) REFERENCES records (id)
     )`, (err) => {
       if (err) {
@@ -723,14 +724,15 @@ function addComment(recordId, comment) {
       // 为评论生成唯一ID
       const commentId = generateUniqueId();
       
-      const sql = `INSERT INTO comments(id, recordId, content, commenterIP, commentTime)
-                   VALUES(?, ?, ?, ?, ?)`;
+      const sql = `INSERT INTO comments(id, recordId, content, commenterIP, commentTime, status)
+                   VALUES(?, ?, ?, ?, ?, ?)`;
       const params = [
         commentId,
         recordId,
         comment.content,
         comment.commenterIP,
-        comment.commentTime
+        comment.commentTime,
+        'pending'  // 默认状态为待审核
       ];
 
       db.run(sql, params, function(err) {
@@ -742,7 +744,8 @@ function addComment(recordId, comment) {
             recordId: recordId,
             content: comment.content,
             commenterIP: comment.commenterIP,
-            commentTime: comment.commentTime
+            commentTime: comment.commentTime,
+            status: 'pending'  // 返回状态
           });
         }
       });
@@ -753,9 +756,10 @@ function addComment(recordId, comment) {
 // 获取指定记录的所有评论
 function getCommentsByRecordId(recordId) {
   return new Promise((resolve, reject) => {
+    // 只返回已审核通过的评论
     const sql = `SELECT id, recordId, content, commenterIP, commentTime 
                  FROM comments 
-                 WHERE recordId = ? 
+                 WHERE recordId = ? AND status = 'approved'
                  ORDER BY commentTime ASC`;
 
     db.all(sql, [recordId], (err, rows) => {
@@ -763,6 +767,50 @@ function getCommentsByRecordId(recordId) {
         reject(err);
       } else {
         resolve(rows);
+      }
+    });
+  });
+}
+
+// 获取所有待审核评论（仅管理员）
+function getPendingComments() {
+  return new Promise((resolve, reject) => {
+    const sql = `SELECT id, recordId, content, commenterIP, commentTime 
+                 FROM comments 
+                 WHERE status = 'pending'
+                 ORDER BY commentTime ASC`;
+
+    db.all(sql, [], (err, rows) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(rows);
+      }
+    });
+  });
+}
+
+// 审核评论（仅管理员）
+function reviewComment(id, status) {
+  return new Promise((resolve, reject) => {
+    // 检查状态是否有效
+    if (!['approved', 'rejected'].includes(status)) {
+      reject(new Error('无效的审核状态'));
+      return;
+    }
+
+    const sql = `UPDATE comments SET status = ? WHERE id = ?`;
+    const params = [status, id];
+
+    db.run(sql, params, function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        if (this.changes === 0) {
+          reject(new Error('评论不存在'));
+        } else {
+          resolve({ id, status });
+        }
       }
     });
   });
@@ -825,6 +873,8 @@ module.exports = {
   deleteRecord,  // 添加删除记录函数
   addComment,
   getCommentsByRecordId,
+  getPendingComments,  // 添加获取待审核评论函数
+  reviewComment,       // 添加审核评论函数
   getRecordFiles,  // 导出新函数
   closeDatabase
 };
