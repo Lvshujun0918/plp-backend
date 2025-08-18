@@ -382,9 +382,6 @@ app.get('/api/key', async (req, res) => {
  *                     id:
  *                       type: string
  *                       example: 1a2b3c4d
- *                     filename:
- *                       type: string
- *                       example: a1b2c3d4e5f-1632123456789-123456789.jpg
  *                     text:
  *                       type: string
  *                       example: 这是一张美丽的风景图片
@@ -407,6 +404,11 @@ app.get('/api/key', async (req, res) => {
  *                     fantasy:
  *                       type: integer
  *                       example: 3
+ *                     filenames:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: ["a1b2c3d4e5f-1632123456789-123456789.jpg"]
  *       400:
  *         description: 秘钥无效或今日已上传过
  *         content:
@@ -501,9 +503,6 @@ app.post('/api/upload', uploadToMemory.array('images', 10), async (req, res) => 
  *                   id:
  *                     type: string
  *                     example: 1a2b3c4d
- *                   filename:
- *                     type: string
- *                     example: a1b2c3d4e5f-1632123456789-123456789.jpg
  *                   text:
  *                     type: string
  *                     example: 这是一张美丽的风景图片
@@ -526,6 +525,11 @@ app.post('/api/upload', uploadToMemory.array('images', 10), async (req, res) => 
  *                   fantasy:
  *                     type: integer
  *                     example: 3
+ *                   filenames:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *                     example: ["a1b2c3d4e5f-1632123456789-123456789.jpg"]
  *       500:
  *         description: 服务器内部错误
  *         content:
@@ -569,9 +573,11 @@ app.get('/api/records', async (req, res) => {
  *                   id:
  *                     type: string
  *                     example: 1a2b3c4d
- *                   filename:
- *                     type: string
- *                     example: a1b2c3d4e5f-1632123456789-123456789.jpg
+ *                   filenames:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *                     example: ["a1b2c3d4e5f-1632123456789-123456789.jpg"]
  *                   text:
  *                     type: string
  *                     example: 这是一张美丽的风景图片
@@ -793,9 +799,6 @@ app.post('/api/records/:id/review', requireAdminAuth, async (req, res) => {
  *                 id:
  *                   type: string
  *                   example: 1a2b3c4d
- *                 filename:
- *                   type: string
- *                   example: a1b2c3d4e5f-1632123456789-123456789.jpg
  *                 text:
  *                   type: string
  *                   example: 这是一张美丽的风景图片
@@ -811,13 +814,18 @@ app.post('/api/records/:id/review', requireAdminAuth, async (req, res) => {
  *                   example: ::1
  *                 status:
  *                   type: string
- *                   example: approved
+ *                   example: pending
  *                 carrier:
  *                   type: integer
  *                   example: 0
  *                 fantasy:
  *                   type: integer
  *                   example: 3
+ *                 filenames:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example: ["a1b2c3d4e5f-1632123456789-123456789.jpg"]
  *       400:
  *         description: 记录不可编辑或参数错误
  *         content:
@@ -910,9 +918,11 @@ app.put('/api/records/:id', uploadToMemory.array('images', 10), async (req, res)
  *                 id:
  *                   type: string
  *                   example: 1a2b3c4d
- *                 filename:
- *                   type: string
- *                   example: a1b2c3d4e5f-1632123456789-123456789.jpg
+ *                 filenames:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example: ["a1b2c3d4e5f-1632123456789-123456789.jpg"]
  *                 text:
  *                   type: string
  *                   example: 这是一张美丽的风景图片
