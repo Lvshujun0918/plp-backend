@@ -529,6 +529,10 @@ function editRecord(id, updates, uploadDir, clientIP) {
         params.push(updates.title);
       }
       
+      // 重置审核状态为待审核
+      updateFields.push('status = ?');
+      params.push('pending');
+      
       // 处理多图片上传
       if (updates.images && updates.images.length > 0) {
         // 删除旧的关联文件记录
@@ -630,6 +634,7 @@ function editRecord(id, updates, uploadDir, clientIP) {
                 getRecordFiles(row.id).then(filenames => {
                   resolve({
                     ...row,
+                    status: 'pending', // 确保返回的状态是pending
                     filenames: filenames // 添加所有文件名
                   });
                 }).catch(err => {
