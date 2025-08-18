@@ -253,6 +253,21 @@ function validateAdminPassword(password) {
   });
 }
 
+// 检查管理员密码是否已设置
+function isAdminPasswordSet() {
+  return new Promise((resolve, reject) => {
+    const sql = `SELECT COUNT(*) as count FROM admin WHERE id = 1`;
+    
+    db.get(sql, [], (err, row) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(row.count > 0);
+      }
+    });
+  });
+}
+
 // 保存记录
 function saveRecord(record) {
   return new Promise((resolve, reject) => {
@@ -794,6 +809,7 @@ module.exports = {
   checkUploadLimit,
   setAdminPassword,
   validateAdminPassword,
+  isAdminPasswordSet,  // 添加检查管理员密码是否已设置的函数
   saveRecord,
   getAllRecords,
   getPendingRecords,
@@ -801,7 +817,6 @@ module.exports = {
   getRandomRecord,
   getApprovedRecords,
   editRecord,
-  deleteRecord,
   deleteRecord,  // 添加删除记录函数
   addComment,
   getCommentsByRecordId,

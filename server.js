@@ -121,7 +121,7 @@ function requireAdminAuth(req, res, next) {
 
 /**
  * @swagger
- * /admin/init:
+ * /api/admin/init:
  *   post:
  *     summary: 初始化管理员密码
  *     description: 设置管理员密码（仅在首次使用时调用）
@@ -148,6 +148,16 @@ function requireAdminAuth(req, res, next) {
  *                 message:
  *                   type: string
  *                   example: 管理员密码设置成功
+ *       400:
+ *         description: 密码不能为空或管理员密码已设置
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 管理员密码已设置
  *       500:
  *         description: 服务器内部错误
  *         content:
@@ -166,6 +176,12 @@ app.post('/api/admin/init', async (req, res) => {
     
     if (!password) {
       return res.status(400).json({ error: '密码不能为空' });
+    }
+    
+    // 检查管理员密码是否已设置
+    const isSet = await db.isAdminPasswordSet();
+    if (isSet) {
+      return res.status(400).json({ error: '管理员密码已设置' });
     }
     
     // 设置管理员密码
