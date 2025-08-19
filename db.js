@@ -27,6 +27,8 @@ function initializeDatabase() {
       id TEXT PRIMARY KEY,
       text TEXT,
       title TEXT,
+      originalText TEXT,
+      originalTitle TEXT,
       uploadTime TEXT NOT NULL,
       uploaderIP TEXT,
       status TEXT DEFAULT 'pending',
@@ -275,12 +277,14 @@ function saveRecord(record) {
     // 为记录生成唯一ID
     const uniqueId = generateUniqueId();
     
-    const sql = `INSERT INTO records(id, text, title, uploadTime, uploaderIP, status, carrier, fantasy)
-                 VALUES(?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO records(id, text, title, originalText, originalTitle, uploadTime, uploaderIP, status, carrier, fantasy)
+                 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const params = [
       uniqueId,
       record.text,
       record.title || '', // 添加title字段
+      record.text, // 保存原始text
+      record.title || '', // 保存原始title
       record.uploadTime,
       record.uploaderIP,
       'pending', // 默认状态为待审核
@@ -333,6 +337,8 @@ function saveRecord(record) {
           id: uniqueId,
           text: record.text,
           title: record.title || '', // 添加title字段
+          originalText: record.text, // 返回原始text
+          originalTitle: record.title || '', // 返回原始title
           uploadTime: record.uploadTime,
           uploaderIP: record.uploaderIP,
           status: 'pending',
@@ -348,7 +354,7 @@ function saveRecord(record) {
 // 获取所有记录
 function getAllRecords() {
   return new Promise((resolve, reject) => {
-    const sql = `SELECT id, text, title, uploadTime, uploaderIP, status, carrier, fantasy FROM records`;
+    const sql = `SELECT id, text, title, originalText, originalTitle, uploadTime, uploaderIP, status, carrier, fantasy FROM records`;
 
     db.all(sql, [], (err, rows) => {
       if (err) {
@@ -377,7 +383,7 @@ function getAllRecords() {
 // 获取所有待审核记录
 function getPendingRecords() {
   return new Promise((resolve, reject) => {
-    const sql = `SELECT id, text, title, uploadTime, uploaderIP, status, carrier, fantasy FROM records WHERE status = 'pending'`;
+    const sql = `SELECT id, text, title, originalText, originalTitle, uploadTime, uploaderIP, status, carrier, fantasy FROM records WHERE status = 'pending'`;
 
     db.all(sql, [], (err, rows) => {
       if (err) {
@@ -403,7 +409,7 @@ function getPendingRecords() {
   });
 }
 
-// 审核记录
+// 审核记录（仅管理员）
 function reviewRecord(id, status) {
   return new Promise((resolve, reject) => {
     // 检查状态是否有效
@@ -412,8 +418,17 @@ function reviewRecord(id, status) {
       return;
     }
 
-    const sql = `UPDATE records SET status = ? WHERE id = ?`;
-    const params = [status, id];
+    // 如果审核通过，需要更新原始内容为当前内容
+    let sql, params;
+    if (status === 'approved') {
+      // 审核通过时，将当前内容设置为原始内容
+      sql = `UPDATE records SET status = ?, originalText = text, originalTitle = title WHERE id = ?`;
+      params = [status, id];
+    } else {
+      // 审核拒绝时，只更新状态
+      sql = `UPDATE records SET status = ? WHERE id = ?`;
+      params = [status, id];
+    }
 
     db.run(sql, params, function(err) {
       if (err) {
@@ -449,7 +464,7 @@ function getRandomRecord() {
       const randomOffset = Math.floor(Math.random() * count);
 
       // 获取随机记录
-      const sql = `SELECT id, text, title, uploadTime, uploaderIP, status, carrier, fantasy
+      const sql = `SELECT id, text, title, originalText, originalTitle, uploadTime, uploaderIP, status, carrier, fantasy
                    FROM records WHERE status = 'approved' LIMIT 1 OFFSET ?`;
       
       db.get(sql, [randomOffset], (err, row) => {
@@ -474,7 +489,7 @@ function getRandomRecord() {
 // 获取已审核通过的记录
 function getApprovedRecords() {
   return new Promise((resolve, reject) => {
-    const sql = `SELECT id, text, title, uploadTime, uploaderIP, status, carrier, fantasy FROM records WHERE status = 'approved'`;
+    const sql = `SELECT id, text, title, originalText, originalTitle, uploadTime, uploaderIP, status, carrier, fantasy FROM records WHERE status = 'approved'`;
 
     db.all(sql, [], (err, rows) => {
       if (err) {
@@ -504,7 +519,7 @@ function getApprovedRecords() {
 function editRecord(id, updates, uploadDir, clientIP) {
   return new Promise((resolve, reject) => {
     // 首先检查记录是否存在且可编辑
-    const checkSql = `SELECT id, carrier, fantasy FROM records WHERE id = ? AND carrier = 0 AND status = 'approved'`;
+    const checkSql = `SELECT id, carrier, fantasy, text, title FROM records WHERE id = ? AND carrier = 0 AND status = 'approved'`;
     db.get(checkSql, [id], (err, row) => {
       if (err) {
         reject(err);
@@ -514,6 +529,19 @@ function editRecord(id, updates, uploadDir, clientIP) {
       if (!row) {
         reject(new Error('记录不存在、不可编辑或未审核通过'));
         return;
+      }
+
+      // 保存原始内容（如果尚未保存）
+      let originalText = row.text;
+      let originalTitle = row.title;
+      
+      // 如果是第一次编辑，保存原始内容
+      if (!row.originalText && row.text) {
+        originalText = row.text;
+      }
+      
+      if (!row.originalTitle && row.title) {
+        originalTitle = row.title;
       }
 
       // 构建动态更新语句
@@ -528,6 +556,17 @@ function editRecord(id, updates, uploadDir, clientIP) {
       if (updates.title !== undefined) {
         updateFields.push('title = ?');
         params.push(updates.title);
+      }
+      
+      // 保存原始内容
+      if (originalText && !row.originalText) {
+        updateFields.push('originalText = ?');
+        params.push(originalText);
+      }
+      
+      if (originalTitle && !row.originalTitle) {
+        updateFields.push('originalTitle = ?');
+        params.push(originalTitle);
       }
       
       // 重置审核状态为待审核
@@ -594,7 +633,7 @@ function editRecord(id, updates, uploadDir, clientIP) {
       // 如果没有任何更新字段，则直接返回
       if (updateFields.length === 0) {
         // 重新查询完整记录
-        const selectSql = `SELECT id, text, title, uploadTime, uploaderIP, status, carrier, fantasy FROM records WHERE id = ?`;
+        const selectSql = `SELECT id, text, title, originalText, originalTitle, uploadTime, uploaderIP, status, carrier, fantasy FROM records WHERE id = ?`;
         db.get(selectSql, [id], (err, row) => {
           if (err) {
             reject(err);
@@ -626,7 +665,7 @@ function editRecord(id, updates, uploadDir, clientIP) {
             reject(new Error('记录更新失败'));
           } else {
             // 查询更新后的记录并获取所有文件名
-            const selectSql = `SELECT id, text, title, uploadTime, uploaderIP, status, carrier, fantasy FROM records WHERE id = ?`;
+            const selectSql = `SELECT id, text, title, originalText, originalTitle, uploadTime, uploaderIP, status, carrier, fantasy FROM records WHERE id = ?`;
             db.get(selectSql, [id], (err, row) => {
               if (err) {
                 reject(err);

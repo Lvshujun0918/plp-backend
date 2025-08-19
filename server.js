@@ -388,6 +388,12 @@ app.get('/api/key', async (req, res) => {
  *                     title:
  *                       type: string
  *                       example: 美丽的风景
+ *                     originalText:
+ *                       type: string
+ *                       example: 这是一张美丽的风景图片
+ *                     originalTitle:
+ *                       type: string
+ *                       example: 美丽的风景
  *                     uploadTime:
  *                       type: string
  *                       format: date-time
@@ -509,6 +515,12 @@ app.post('/api/upload', uploadToMemory.array('images', 10), async (req, res) => 
  *                   title:
  *                     type: string
  *                     example: 美丽的风景
+ *                   originalText:
+ *                     type: string
+ *                     example: 这是一张美丽的风景图片
+ *                   originalTitle:
+ *                     type: string
+ *                     example: 美丽的风景
  *                   uploadTime:
  *                     type: string
  *                     format: date-time
@@ -573,15 +585,16 @@ app.get('/api/records', async (req, res) => {
  *                   id:
  *                     type: string
  *                     example: 1a2b3c4d
- *                   filenames:
- *                     type: array
- *                     items:
- *                       type: string
- *                     example: ["a1b2c3d4e5f-1632123456789-123456789.jpg"]
  *                   text:
  *                     type: string
  *                     example: 这是一张美丽的风景图片
  *                   title:
+ *                     type: string
+ *                     example: 美丽的风景
+ *                   originalText:
+ *                     type: string
+ *                     example: 这是一张美丽的风景图片
+ *                   originalTitle:
  *                     type: string
  *                     example: 美丽的风景
  *                   uploadTime:
@@ -600,6 +613,11 @@ app.get('/api/records', async (req, res) => {
  *                   fantasy:
  *                     type: integer
  *                     example: 3
+ *                   filenames:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *                     example: ["a1b2c3d4e5f-1632123456789-123456789.jpg"]
  *       401:
  *         description: 未授权访问
  *         content:
@@ -805,6 +823,12 @@ app.post('/api/records/:id/review', requireAdminAuth, async (req, res) => {
  *                 title:
  *                   type: string
  *                   example: 美丽的风景
+ *                 originalText:
+ *                   type: string
+ *                   example: 这是一张美丽的风景图片
+ *                 originalTitle:
+ *                   type: string
+ *                   example: 美丽的风景
  *                 uploadTime:
  *                   type: string
  *                   format: date-time
@@ -918,15 +942,16 @@ app.put('/api/records/:id', uploadToMemory.array('images', 10), async (req, res)
  *                 id:
  *                   type: string
  *                   example: 1a2b3c4d
- *                 filenames:
- *                   type: array
- *                   items:
- *                     type: string
- *                   example: ["a1b2c3d4e5f-1632123456789-123456789.jpg"]
  *                 text:
  *                   type: string
  *                   example: 这是一张美丽的风景图片
  *                 title:
+ *                   type: string
+ *                   example: 美丽的风景
+ *                 originalText:
+ *                   type: string
+ *                   example: 这是一张美丽的风景图片
+ *                 originalTitle:
  *                   type: string
  *                   example: 美丽的风景
  *                 uploadTime:
@@ -945,6 +970,11 @@ app.put('/api/records/:id', uploadToMemory.array('images', 10), async (req, res)
  *                 fantasy:
  *                   type: integer
  *                   example: 3
+ *                 filenames:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example: ["a1b2c3d4e5f-1632123456789-123456789.jpg"]
  *       404:
  *         description: 没有可用的记录
  *         content:
