@@ -1351,6 +1351,87 @@ app.post('/api/comments/:id/review', requireAdminAuth, async (req, res) => {
 
 /**
  * @swagger
+ * /api/comments/{id}:
+ *   delete:
+ *     summary: 删除指定评论（仅管理员）
+ *     description: 管理员删除指定的评论
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: 评论ID
+ *     responses:
+ *       200:
+ *         description: 评论删除成功
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                   example: comment-1a2b3c4d
+ *                 message:
+ *                   type: string
+ *                   example: 评论删除成功
+ *       401:
+ *         description: 认证失败
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 认证失败
+ *       404:
+ *         description: 评论不存在
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 评论不存在
+ *       500:
+ *         description: 服务器内部错误
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 服务器内部错误
+ */
+// 删除评论接口（仅管理员）
+app.delete('/api/comments/:id', requireAdminAuth, async (req, res) => {
+  try {
+    const commentId = req.params.id;
+    
+    // 删除评论
+    const result = await db.deleteComment(commentId);
+    
+    // 返回成功响应
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('删除评论错误:', error);
+    
+    if (error.message === '评论不存在') {
+      return res.status(404).json({ error: '评论不存在' });
+    }
+    
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+/**
+ * @swagger
  * /records/{id}:
  *   delete:
  *     summary: 删除指定记录（仅管理员）

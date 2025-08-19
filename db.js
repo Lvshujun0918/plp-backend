@@ -816,6 +816,25 @@ function reviewComment(id, status) {
   });
 }
 
+// 删除评论（仅管理员）
+function deleteComment(id) {
+  return new Promise((resolve, reject) => {
+    const sql = `DELETE FROM comments WHERE id = ?`;
+    
+    db.run(sql, [id], function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        if (this.changes === 0) {
+          reject(new Error('评论不存在'));
+        } else {
+          resolve({ id, message: '评论删除成功' });
+        }
+      }
+    });
+  });
+}
+
 // 获取记录的所有文件
 function getRecordFiles(recordId) {
   return new Promise((resolve, reject) => {
@@ -875,6 +894,8 @@ module.exports = {
   getCommentsByRecordId,
   getPendingComments,  // 添加获取待审核评论函数
   reviewComment,       // 添加审核评论函数
+  deleteComment,       // 添加删除评论函数
   getRecordFiles,  // 导出新函数
-  closeDatabase
+  closeDatabase,
+  deleteComment       // 添加删除评论函数
 };
