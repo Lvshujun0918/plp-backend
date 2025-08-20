@@ -47,7 +47,7 @@ const uploadToMemory = multer({ storage: memoryStorage });
 const uploadToDisk = multer({ storage: storage });
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // JWT密钥
 const JWT_SECRET = process.env.JWT_SECRET || 'plp_backend_default_secret_key';
